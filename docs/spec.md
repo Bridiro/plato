@@ -1,0 +1,226 @@
+# Plato Language Specification
+
+## 1. Introduction
+
+Plato is a minimal, statically typed, compiled programming language. It is designed to be fast, simple, and expressive. Plato prioritizes clean syntax, strong static typing, and direct machine code generation. This document defines its syntax and semantics formally.
+
+## 2. Lexical Structure
+
+### 2.1 Keywords
+
+```
+fn, let, if, else, return, true, false
+```
+
+### 2.2 Identifiers
+
+Identifiers begin with a letter (a-z, A-Z) and may contain letters, digits, and underscores.
+
+```
+identifier = letter { letter | digit | '_' };
+```
+
+### 2.3 Literals
+
+* **Integer**: Decimal whole numbers (e.g., `42`)
+* **Float**: Numbers with a decimal point (e.g., `3.14`)
+* **Boolean**: `true`, `false`
+* **Character**: Single characters in single quotes (e.g., `'a'`)
+* **Unit**: `()`
+
+### 2.4 Comments
+
+Single-line comments start with `//` and continue to the end of the line.
+
+### 2.5 Whitespace
+
+Whitespace separates tokens but is otherwise ignored. Line breaks are insignificant.
+
+## 3. Syntax (EBNF Grammar)
+
+```ebnf
+(* Lexical elements *)
+letter     = "a" | ... | "z" | "A" | ... | "Z" ;
+digit      = "0" | ... | "9" ;
+identifier = letter { letter | digit | '_' } ;
+integer    = digit { digit } ;
+float      = digit { digit } "." digit { digit } ;
+boolean    = "true" | "false" ;
+char       = "'" any_char "'" ;
+unit       = "()" ;
+
+(* Program structure *)
+program        = { top_level_item } ;
+top_level_item = global_var_decl | function ;
+
+(* Declarations *)
+global_var_decl = "let" identifier [ ":" type ] "=" expression ";" ;
+function        = "fn" identifier "(" [ param_list ] ")" "->" type block ;
+param_list      = param { "," param } ;
+param           = identifier ":" type ;
+
+(* Blocks and statements *)
+block       = "{" { statement } [ expression ] "}" ;
+statement   = variable_decl
+            | assignment
+            | return_stmt
+            | expr_stmt
+            | if_expr ;
+
+variable_decl = "let" identifier [ ":" type ] "=" expression ";" ;
+assignment    = identifier "=" expression ";" ;
+return_stmt   = "return" expression ";" ;
+expr_stmt     = expression ";" ;
+
+(* Expressions *)
+expression     = if_expr | comparison ;
+if_expr        = "if" expression block [ "else" block ] ;
+comparison     = addition { comp_op addition } ;
+comp_op        = "==" | "!=" | "<" | ">" | "<=" | ">=" ;
+addition       = multiplication { add_op multiplication } ;
+add_op         = "+" | "-" ;
+multiplication = unary { mul_op unary } ;
+mul_op         = "*" | "/" ;
+unary          = ( "!" | "-" ) unary | primary ;
+
+primary = literal
+        | identifier
+        | function_call
+        | "(" expression ")" ;
+
+function_call = identifier "(" [ argument_list ] ")" ;
+argument_list = expression { "," expression } ;
+
+(* Types *)
+type = "int" | "float" | "bool" | "char" | "unit" ;
+```
+
+## 4. Static Semantics (Typing Rules)
+
+### 4.1 Types
+
+Plato supports the following primitive types:
+
+```
+int, float, bool, char, unit
+```
+
+### 4.2 Type Environments
+
+Typing judgments are made in the context of an environment `Γ`, which maps identifiers to types:
+
+```
+Γ ⊢ e : τ
+```
+
+means "under environment Γ, expression `e` has type `τ`."
+
+### 4.3 Literals
+
+```
+Γ ⊢ 42 : int
+Γ ⊢ 3.14 : float
+Γ ⊢ true : bool
+Γ ⊢ false : bool
+Γ ⊢ 'a' : char
+Γ ⊢ () : unit
+```
+
+### 4.4 Variables
+
+```
+Γ(x) = τ
+———————
+Γ ⊢ x : τ
+```
+
+### 4.5 Binary Operations
+
+Arithmetic (e.g., `+`, `-`, `*`, `/`) and comparisons:
+
+```
+Γ ⊢ e1 : int   Γ ⊢ e2 : int
+———————————————
+Γ ⊢ e1 + e2 : int
+
+Γ ⊢ e1 : float   Γ ⊢ e2 : float
+———————————————
+Γ ⊢ e1 + e2 : float
+
+Γ ⊢ e1 : τ   Γ ⊢ e2 : τ   τ ∈ { int, float, bool, char }
+———————————————————————————————
+Γ ⊢ e1 == e2 : bool
+```
+
+### 4.6 Let Binding
+
+```
+Γ ⊢ e : τ
+——————————————
+Γ ⊢ let x = e : Γ[x ↦ τ]
+
+Γ ⊢ e : τ     τ = τ'
+——————————————
+Γ ⊢ let x: τ' = e : Γ[x ↦ τ']
+```
+
+### 4.7 If Expression
+
+```
+Γ ⊢ cond : bool   Γ ⊢ e1 : τ   Γ ⊢ e2 : τ
+——————————————————————————————
+Γ ⊢ if cond { e1 } else { e2 } : τ
+```
+
+### 4.8 Function Definition and Call
+
+Let `f(x: τ1, y: τ2) -> τ` be defined as:
+
+```
+Γ[x ↦ τ1, y ↦ τ2] ⊢ body : τ
+———————————————————————————
+Γ ⊢ fn f(x: τ1, y: τ2) -> τ { body } : f : τ1 × τ2 → τ
+```
+
+Function application:
+
+```
+Γ ⊢ f : τ1 × τ2 → τ   Γ ⊢ e1 : τ1   Γ ⊢ e2 : τ2
+——————————————————————————————————————————————
+Γ ⊢ f(e1, e2) : τ
+```
+
+### 4.9 Return Statement
+
+```
+Γ ⊢ e : τ
+———————————
+Γ ⊢ return e : τ (terminates block with value)
+```
+
+### 4.10 Block
+
+```
+Γ ⊢ s1 : Γ1   Γ1 ⊢ s2 : Γ2   ...   Γn ⊢ e : τ
+———————————————————————————————
+Γ ⊢ { s1; s2; ...; e } : τ
+```
+
+## 5. Execution Semantics (To be defined)
+
+This section will define:
+
+* Expression evaluation order
+* Block return behavior (last expression)
+* Runtime behavior of `if`, function calls, etc.
+
+## 6. Built-in Functions (Planned)
+
+* `println(...)` — basic output
+* `assert(...)` — debugging utility
+
+## 7. Future Extensions
+
+* string literals
+* Structs and enums
+* Modules and namespaces
