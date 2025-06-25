@@ -1,0 +1,40 @@
+# Dune build artifacts
+/_build/
+/.install/
+/_dune/
+/.dune/
+
+# Opam local switch (if you use `opam switch create .`)
+/.opam-switch/
+
+# Dune-generated opam files (if using generate_opam_files)
+plato.install
+plato.opam
+
+# Merlin/Editor metadata
+/.merlin
+/.merlin-flow
+/.merlin.in
+/.merlin-ide
+/.ocamlformat
+/.vscode/
+
+# Misc
+*.swp
+*.swo
+*.bak
+*~
+
+# Logs and crash dumps
+*.log
+*.stackdump
+
+# macOS / Linux / Windows system files
+.DS_Store
+Thumbs.db
+
+# Repl history (if you ever add a repl)
+.repl_history
+
+/test/*.output
+/test/*.tmp
