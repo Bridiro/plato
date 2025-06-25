@@ -13,7 +13,7 @@
 
 (package
  (name plato)
- (synopsis "A minimal educational language")
+ (synopsis "A minimal statically typed language")
  (description "Plato is a statically typed, compiled language. Designed to be small, fast and educational")
  (depends (ocaml (>= 5.1)))
  (tags
