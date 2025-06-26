@@ -206,13 +206,83 @@ Function application:
 Γ ⊢ { s1; s2; ...; e } : τ
 ```
 
-## 5. Execution Semantics (To be defined)
+## 5. Execution Semantics
 
-This section will define:
+The operational semantics of Plato is defined using a small-step evaluation relation:
 
-* Expression evaluation order
-* Block return behavior (last expression)
-* Runtime behavior of `if`, function calls, etc.
+```
+e ⇓ v
+```
+
+meaning "expression `e` evaluates to value `v`."
+
+### 5.1 Values
+
+```
+v ::= n | f | true | false | 'a' | ()
+```
+
+Where `n` is an integer or float literal and `f` is a function closure.
+
+### 5.2 Environment
+
+Evaluation uses an environment `σ`, mapping variables to runtime values.
+
+### 5.3 Variable Lookup
+
+```
+σ(x) = v
+————————
+σ ⊢ x ⇓ v
+```
+
+### 5.4 Binary Operations
+
+```
+σ ⊢ e1 ⇓ n1   σ ⊢ e2 ⇓ n2   n3 = n1 + n2
+——————————————————————————————
+σ ⊢ e1 + e2 ⇓ n3
+```
+
+(Similar rules for `-`, `*`, `/`, `==`, `!=`, etc.)
+
+### 5.5 Let Binding
+
+```
+σ ⊢ e ⇓ v
+——————————————
+σ ⊢ let x = e ⇓ σ[x ↦ v]
+```
+
+### 5.6 If Expression
+
+```
+σ ⊢ cond ⇓ true    σ ⊢ e1 ⇓ v
+——————————————————————
+σ ⊢ if cond { e1 } else { e2 } ⇓ v
+
+σ ⊢ cond ⇓ false   σ ⊢ e2 ⇓ v
+——————————————————————
+σ ⊢ if cond { e1 } else { e2 } ⇓ v
+```
+
+### 5.7 Function Application
+
+```
+σ ⊢ e1 ⇓ v1   ...   σ ⊢ en ⇓ vn
+f(x1, ..., xn) = body   σ' = σ[x1 ↦ v1, ..., xn ↦ vn]
+σ' ⊢ body ⇓ v
+——————————————————————————
+σ ⊢ f(e1, ..., en) ⇓ v
+```
+
+### 5.8 Block Evaluation
+
+```
+σ ⊢ s1 ⇓ σ1   σ1 ⊢ s2 ⇓ σ2   ...   σn ⊢ e ⇓ v
+————————————————————————————————————
+σ ⊢ { s1; s2; ...; e } ⇓ v
+```
 
 ## 6. Built-in Functions (Planned)
 
