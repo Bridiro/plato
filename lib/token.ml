@@ -89,3 +89,11 @@ let show_token = function
     | Le -> "Le"
     | Ge -> "Ge"
     | Assign -> "Assign"
+
+let show_position (pos : position) =
+    Printf.sprintf "%d:%d" pos.line pos.column
+
+let show_span (span : span) =
+    Printf.sprintf "%s - %s"
+      (show_position span.start_pos)
+      (show_position span.end_pos)
