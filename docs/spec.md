@@ -284,12 +284,82 @@ f(x1, ..., xn) = body   σ' = σ[x1 ↦ v1, ..., xn ↦ vn]
 σ ⊢ { s1; s2; ...; e } ⇓ v
 ```
 
-## 6. Built-in Functions (Planned)
+## 6. Abstract Syntax Tree (AST)
+
+### 6.1 Positions and Spans
+
+```ocaml
+type position = { line: int; column: int }
+type span = { start_pos: position; end_pos: position }
+type 'a located = { node: 'a; span: span }
+```
+
+### 6.2 Program
+
+```ocaml
+type program = toplevel_item list
+and toplevel_item =
+  | GlobalLet of string * typ option * expr
+  | Function of string * (string * typ) list * typ * block
+```
+
+### 6.3 Blocks and Statements
+
+```ocaml
+type block = statement list * expr option
+
+and statement = statement_node located
+and statement_node =
+  | Let of string * typ option * expr
+  | Assign of string * expr
+  | Return of expr
+  | ExprStmt of expr
+  | If of expr * block * block option
+```
+
+### 6.4 Expressions
+
+```ocaml
+type expr = expr_node located
+
+and expr_node =
+  | IntLit of int
+  | FloatLit of float
+  | BoolLit of bool
+  | CharLit of char
+  | UnitLit
+  | Var of string
+  | Unary of unary_op * expr
+  | Binary of binary_op * expr * expr
+  | Call of string * expr list
+  | Grouped of expr
+
+and unary_op = Not | Neg
+
+and binary_op =
+  | Add | Sub | Mul | Div
+  | Eq | Neq | Lt | Gt | Le | Ge
+```
+
+### 6.5 Types
+
+```ocaml
+type typ = typ_node located
+
+and typ_node =
+  | TInt
+  | TFloat
+  | TBool
+  | TChar
+  | TUnit
+```
+
+## 7. Built-in Functions (Planned)
 
 * `println(...)` — basic output
 * `assert(...)` — debugging utility
 
-## 7. Future Extensions
+## 8. Future Extensions
 
 * string literals
 * Structs and enums
