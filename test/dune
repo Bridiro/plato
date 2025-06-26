@@ -1,2 +1,4 @@
-(test
- (name test_plato))
+(executable
+ (name test_lexer)
+ (modules test_lexer)
+ (libraries plato))

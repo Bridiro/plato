@@ -1,2 +1,4 @@
 (library
- (name plato))
+ (name plato)
+ (public_name plato)
+ (modules token lexer))
