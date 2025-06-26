@@ -35,8 +35,9 @@ Whether you're interested in language design, compiler internals, or want to bui
 ## Project Structure
 
 ```
-src/        → Compiler source code (lexer, parser, AST, etc.)
-test/       → Tests and examples
+src/         → Compiler source code
+lib/         → Compiler utilities (lexer, parser, AST, etc.)
+test/        → Tests and examples
 dune-project → Dune build configuration
 ```
 
