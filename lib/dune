@@ -1,4 +1,4 @@
 (library
  (name plato)
  (public_name plato)
- (modules token lexer))
+ (modules token lexer ast parser))
