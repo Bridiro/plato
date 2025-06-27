@@ -382,6 +382,28 @@ let next_token state : located_token option =
                                 end_pos = end_position state;
                               };
                           })
+            | Some ',' ->
+                advance state;
+                Some
+                  {
+                    node = Comma;
+                    span =
+                      {
+                        start_pos = start;
+                        end_pos = end_position state;
+                      };
+                  }
+            | Some ':' ->
+                advance state;
+                Some
+                  {
+                    node = Colon;
+                    span =
+                      {
+                        start_pos = start;
+                        end_pos = end_position state;
+                      };
+                  }
             | Some ';' ->
                 advance state;
                 Some
