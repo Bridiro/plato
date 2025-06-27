@@ -49,6 +49,8 @@ type token =
   | Le
   | Ge
   | Assign
+  | AndAnd
+  | OrOr
 
 type located_token = token located
 
@@ -89,6 +91,8 @@ let show_token = function
     | Le -> "Le"
     | Ge -> "Ge"
     | Assign -> "Assign"
+    | AndAnd -> "AndAnd"
+    | OrOr -> "OrOr"
 
 let show_position (pos : position) =
     Printf.sprintf "%d:%d" pos.line pos.column

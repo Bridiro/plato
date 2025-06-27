@@ -4,10 +4,17 @@ open Plato.Ast
 
 let input =
     {|
-  fn main(x: int, y: bool) -> int {
-    let z = 42;
-    return z;
-  }
+    fn add(x: int, y: int) -> int {
+        return x + y * 1;
+    }
+
+    fn main() -> int {
+        let a = 3;
+        let b = 10;
+        let c = true && false || true;
+        let x = add(a, b);
+        return 0;
+    }
 |}
 
 let () =

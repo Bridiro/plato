@@ -415,6 +415,46 @@ let next_token state : located_token option =
                         end_pos = end_position state;
                       };
                   }
+            | Some '&' -> (
+                advance state;
+                match peek state with
+                    | Some '&' ->
+                        advance state;
+                        Some
+                          {
+                            node = AndAnd;
+                            span =
+                              {
+                                start_pos = start;
+                                end_pos = end_position state;
+                              };
+                          }
+                    | _ ->
+                        failwith
+                          (Printf.sprintf
+                             "Unknown character \'&\' at \
+                              %d:%d"
+                             state.line state.column))
+            | Some '|' -> (
+                advance state;
+                match peek state with
+                    | Some '|' ->
+                        advance state;
+                        Some
+                          {
+                            node = OrOr;
+                            span =
+                              {
+                                start_pos = start;
+                                end_pos = end_position state;
+                              };
+                          }
+                    | _ ->
+                        failwith
+                          (Printf.sprintf
+                             "Unknown character \'|\' at \
+                              %d:%d"
+                             state.line state.column))
             | Some '\'' -> Some (lex_char state start)
             (* Identifiers and keywords *)
             | Some c

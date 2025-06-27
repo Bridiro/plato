@@ -10,21 +10,39 @@ type ty =
 (* === Function Parameters === *)
 type param = string * ty
 
+(* === Binary Operators === *)
+type bin_op =
+  | Add
+  | Sub
+  | Mul
+  | Div
+  | Eq
+  | Neq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | And
+  | Or
+
 (* === Expressions === *)
 type expr =
   | Int of int
   | Bool of bool
   | Char of char
   | Ident of string
+  | Binary of expr * bin_op * expr
+  | If of expr * block * block
+  | Call of expr * expr list
 
 (* === Statements === *)
-type stmt =
+and stmt =
   | Let of string * expr
   | Return of expr
   | Expr of expr
 
 (* === Function Body === *)
-type block = stmt list
+and block = stmt list
 
 (* === Function Definitions === *)
 type func = {
@@ -46,13 +64,43 @@ let string_of_ty = function
     | TyUnit -> "unit"
     | TyIdent id -> id
 
-let string_of_expr = function
+let string_of_bin_op = function
+    | Add -> "+"
+    | Sub -> "-"
+    | Mul -> "*"
+    | Div -> "/"
+    | Eq -> "=="
+    | Neq -> "!="
+    | Lt -> "<"
+    | Le -> "<="
+    | Gt -> ">"
+    | Ge -> ">="
+    | And -> "&&"
+    | Or -> "||"
+
+let rec string_of_expr = function
     | Int i -> string_of_int i
     | Bool b -> string_of_bool b
     | Char c -> Printf.sprintf "'%c'" c
     | Ident s -> s
+    | Binary (lhs, op, rhs) ->
+        Printf.sprintf "(%s %s %s)"
+          (string_of_expr lhs)
+          (string_of_bin_op op)
+          (string_of_expr rhs)
+    | If (cond, then_b, else_b) ->
+        Printf.sprintf "if %s { %s } else { %s }"
+          (string_of_expr cond)
+          (String.concat "; "
+             (List.map string_of_stmt then_b))
+          (String.concat "; "
+             (List.map string_of_stmt else_b))
+    | Call (fn, args) ->
+        Printf.sprintf "%s(%s)" (string_of_expr fn)
+          (String.concat ", "
+             (List.map string_of_expr args))
 
-let string_of_stmt = function
+and string_of_stmt = function
     | Let (name, e) ->
         Printf.sprintf "let %s = %s;" name
           (string_of_expr e)

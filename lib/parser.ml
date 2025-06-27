@@ -102,27 +102,139 @@ let parse_param_list state =
     in
         loop []
 
-let parse_expr state =
+(* Operator precedence table *)
+let precedence = function
+    | Token.Star | Token.Slash -> 5
+    | Token.Plus | Token.Minus -> 4
+    | Token.Lt | Token.Le | Token.Gt | Token.Ge -> 3
+    | Token.EqEq -> 2
+    | Token.AndAnd | Token.OrOr -> 1
+    | _ -> 0
+
+let token_to_bin_op = function
+    | Token.Plus -> Add
+    | Token.Minus -> Sub
+    | Token.Star -> Mul
+    | Token.Slash -> Div
+    | Token.EqEq -> Eq
+    | Token.NotEq -> Neq
+    | Token.Lt -> Lt
+    | Token.Le -> Le
+    | Token.Gt -> Gt
+    | Token.Ge -> Ge
+    | Token.AndAnd -> And
+    | Token.OrOr -> Or
+    | t ->
+        failwith
+          (Printf.sprintf "Not a binary operator: %s"
+             (show_token t))
+
+let rec parse_expr state = parse_binary_expr state 0
+
+and parse_argument_list state =
     match peek state with
-        | Some { node = Int i; _ } ->
+        | Some { node = RParen; _ } ->
             advance state;
-            Int i
-        | Some { node = Bool b; _ } ->
-            advance state;
-            Bool b
-        | Some { node = Char c; _ } ->
-            advance state;
-            Char c
-        | Some { node = Ident name; _ } ->
-            advance state;
-            Ident name
-        | Some { node; span } ->
-            failwith
-              (Printf.sprintf
-                 "Unexpected token in expression: %s at %s"
-                 (show_token node) (show_span span))
-        | None ->
-            failwith "Unexpected end of input in expression"
+            []
+        | _ ->
+            let rec loop acc =
+                let arg = parse_expr state in
+                    match peek state with
+                        | Some { node = Comma; _ } ->
+                            advance state;
+                            loop (arg :: acc)
+                        | Some { node = RParen; _ } ->
+                            advance state;
+                            List.rev (arg :: acc)
+                        | Some { node; span } ->
+                            failwith
+                              (Printf.sprintf
+                                 "Expected ',' or ')' but \
+                                  got %s at %s"
+                                 (show_token node)
+                                 (show_span span))
+                        | None ->
+                            failwith
+                              "Unexpected EOF in argument \
+                               list"
+            in
+                loop []
+
+and parse_primary_expr state =
+    let rec parse_postfix e =
+        match peek state with
+            | Some { node = LParen; _ } ->
+                advance state;
+                let args = parse_argument_list state in
+                    parse_postfix (Call (e, args))
+            | _ -> e
+    in
+    let base =
+        match peek state with
+            | Some { node = Int i; _ } ->
+                advance state;
+                Int i
+            | Some { node = Bool b; _ } ->
+                advance state;
+                Bool b
+            | Some { node = Char c; _ } ->
+                advance state;
+                Char c
+            | Some { node = Ident name; _ } ->
+                advance state;
+                Ident name
+            | Some { node = LParen; _ } ->
+                advance state;
+                let e = parse_expr state in
+                    expect state RParen;
+                    e
+            | Some { node; span } ->
+                failwith
+                  (Printf.sprintf
+                     "Unexpected token in expression: %s \
+                      at %s"
+                     (show_token node) (show_span span))
+            | None ->
+                failwith "Unexpected EOF in expression"
+    in
+        parse_postfix base
+
+and parse_binary_expr state min_prec =
+    let lhs = parse_primary_expr state in
+        parse_binary_rhs state min_prec lhs
+
+and parse_binary_rhs state min_prec lhs =
+    match peek state with
+        | Some
+            {
+              node =
+                ( Plus
+                | Minus
+                | Star
+                | Slash
+                | EqEq
+                | NotEq
+                | Lt
+                | Le
+                | Gt
+                | Ge
+                | AndAnd
+                | OrOr ) as op_tok;
+              _;
+            } ->
+            let prec = precedence op_tok in
+                if prec < min_prec then
+                  lhs
+                else (
+                  advance state;
+                  let rhs =
+                      parse_binary_expr state (prec + 1)
+                  in
+                  let binop = token_to_bin_op op_tok in
+                  let combined = Binary (lhs, binop, rhs) in
+                      parse_binary_rhs state min_prec
+                        combined)
+        | _ -> lhs
 
 let parse_let state =
     expect state (Keyword K_let);

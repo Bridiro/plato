@@ -10,21 +10,39 @@ type ty =
 (* === Function Parameters === *)
 type param = string * ty
 
+(* === Binary Operators === *)
+type bin_op =
+  | Add
+  | Sub
+  | Mul
+  | Div
+  | Eq
+  | Neq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | And
+  | Or
+
 (* === Expressions === *)
 type expr =
   | Int of int
   | Bool of bool
   | Char of char
   | Ident of string
+  | Binary of expr * bin_op * expr
+  | If of expr * block * block
+  | Call of expr * expr list
 
 (* === Statements === *)
-type stmt =
+and stmt =
   | Let of string * expr
   | Return of expr
   | Expr of expr
 
 (* === Function Body === *)
-type block = stmt list
+and block = stmt list
 
 (* === Function Definitions === *)
 type func = {
@@ -39,6 +57,7 @@ type program = func list
 
 (* === Pretty Printing === *)
 val string_of_ty : ty -> string
+val string_of_bin_op : bin_op -> string
 val string_of_expr : expr -> string
 val string_of_stmt : stmt -> string
 val string_of_param : param -> string
