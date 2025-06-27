@@ -135,6 +135,55 @@ let lex_number state start =
             in
                 { node = Int value; span }
 
+let lex_char state start =
+    advance state;
+
+    (* skip opening ' *)
+    let ch =
+        match peek state with
+            | Some '\\' -> (
+                advance state;
+                match peek state with
+                    | Some 'n' ->
+                        advance state;
+                        '\n'
+                    | Some 't' ->
+                        advance state;
+                        '\t'
+                    | Some '\\' ->
+                        advance state;
+                        '\\'
+                    | Some '\'' ->
+                        advance state;
+                        '\''
+                    | Some c ->
+                        failwith
+                          (Printf.sprintf
+                             "Unknown escape sequence: \\%c"
+                             c)
+                    | None ->
+                        failwith
+                          "Unterminated escape sequence in \
+                           character literal")
+            | Some c ->
+                advance state;
+                c
+            | None ->
+                failwith "Unterminated character literal"
+    in
+
+    (* Expect closing ' *)
+    (match peek state with
+        | Some '\'' -> advance state
+        | _ ->
+            failwith
+              "Expected closing ' in character literal");
+
+    let span =
+        { start_pos = start; end_pos = end_position state }
+    in
+        { node = Char ch; span }
+
 let next_token state : located_token option =
     skip_whitespace state;
     let start = start_position state in
@@ -220,6 +269,28 @@ let next_token state : located_token option =
                                 end_pos = end_position state;
                               };
                           })
+            | Some '*' ->
+                advance state;
+                Some
+                  {
+                    node = Star;
+                    span =
+                      {
+                        start_pos = start;
+                        end_pos = end_position state;
+                      };
+                  }
+            | Some '/' ->
+                advance state;
+                Some
+                  {
+                    node = Slash;
+                    span =
+                      {
+                        start_pos = start;
+                        end_pos = end_position state;
+                      };
+                  }
             | Some '=' -> (
                 advance state;
                 match peek state with
@@ -322,7 +393,7 @@ let next_token state : located_token option =
                         end_pos = end_position state;
                       };
                   }
-            (* Add others like -, *, ;, etc. *)
+            | Some '\'' -> Some (lex_char state start)
             (* Identifiers and keywords *)
             | Some c
               when Char.code c >= Char.code 'a'
