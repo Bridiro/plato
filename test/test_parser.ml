@@ -17,6 +17,8 @@ let input =
         let x = add(a, b);
         if x >= 10 && c {
             a = 2;
+        } else {
+            a = 1;
         }
         return 0;
     }

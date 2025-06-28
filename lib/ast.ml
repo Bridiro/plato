@@ -32,7 +32,6 @@ type expr =
   | Char of char
   | Ident of string
   | Binary of expr * bin_op * expr
-  | If of expr * block * block
   | Call of expr * expr list
 
 (* === Statements === *)
@@ -40,6 +39,8 @@ and stmt =
   | Let of string * expr
   | Return of expr
   | Expr of expr
+  | Assign of string * expr
+  | If of expr * block * block option
 
 (* === Function Body === *)
 and block = stmt list
@@ -93,13 +94,6 @@ let rec string_of_expr = function
           (string_of_expr lhs)
           (string_of_bin_op op)
           (string_of_expr rhs)
-    | If (cond, then_b, else_b) ->
-        Printf.sprintf "if %s { %s } else { %s }"
-          (string_of_expr cond)
-          (String.concat "; "
-             (List.map string_of_stmt then_b))
-          (String.concat "; "
-             (List.map string_of_stmt else_b))
     | Call (fn, args) ->
         Printf.sprintf "%s(%s)" (string_of_expr fn)
           (String.concat ", "
@@ -112,6 +106,20 @@ and string_of_stmt = function
     | Return e ->
         Printf.sprintf "return %s;" (string_of_expr e)
     | Expr e -> Printf.sprintf "%s;" (string_of_expr e)
+    | Assign (name, e) ->
+        Printf.sprintf "%s = %s;" name (string_of_expr e)
+    | If (cond, then_b, Some else_b) ->
+        Printf.sprintf "if %s {\n  %s\n} else {\n  %s\n}"
+          (string_of_expr cond)
+          (String.concat "\n  "
+             (List.map string_of_stmt then_b))
+          (String.concat "\n  "
+             (List.map string_of_stmt else_b))
+    | If (cond, then_b, None) ->
+        Printf.sprintf "if %s {\n  %s\n}"
+          (string_of_expr cond)
+          (String.concat "\n  "
+             (List.map string_of_stmt then_b))
 
 let string_of_param (name, ty) =
     Printf.sprintf "%s: %s" name (string_of_ty ty)

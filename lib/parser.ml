@@ -250,12 +250,45 @@ let parse_return state =
         expect state Semicolon;
         Return value
 
-let parse_stmt state =
+let rec parse_if_stmt state =
+    expect state (Keyword K_if);
+    let cond = parse_expr state in
+    let then_block = parse_block state in
+    let else_block =
+        match peek state with
+            | Some { node = Keyword K_else; _ } ->
+                advance state;
+                Some (parse_block state)
+            | _ -> None
+    in
+        If (cond, then_block, else_block)
+
+and parse_stmt state =
     match peek state with
         | Some { node = Keyword K_let; _ } ->
             parse_let state
         | Some { node = Keyword K_return; _ } ->
             parse_return state
+        | Some { node = Keyword K_if; _ } ->
+            parse_if_stmt state
+        | Some { node = Ident name; _ } -> (
+            (* lookahead to see if this is an assignment *)
+            advance state;
+            match peek state with
+                | Some { node = Assign; _ } ->
+                    advance state;
+                    let value = parse_expr state in
+                        expect state Semicolon;
+                        Assign (name, value)
+                | Some { node; span } ->
+                    failwith
+                      (Printf.sprintf
+                         "Unexpected token after \
+                          identifier: %s at %s"
+                         (show_token node) (show_span span))
+                | None ->
+                    failwith
+                      "Unexpected EOF after identifier")
         | Some _ ->
             let e = parse_expr state in
                 expect state Semicolon;
@@ -263,7 +296,7 @@ let parse_stmt state =
         | None ->
             failwith "Unexpected end of input in statement"
 
-let parse_block state =
+and parse_block state =
     expect state LBrace;
     let rec loop acc =
         match peek state with

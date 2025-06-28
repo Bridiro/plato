@@ -32,7 +32,6 @@ type expr =
   | Char of char
   | Ident of string
   | Binary of expr * bin_op * expr
-  | If of expr * block * block
   | Call of expr * expr list
 
 (* === Statements === *)
@@ -40,6 +39,8 @@ and stmt =
   | Let of string * expr
   | Return of expr
   | Expr of expr
+  | Assign of string * expr
+  | If of expr * block * block option
 
 (* === Function Body === *)
 and block = stmt list
