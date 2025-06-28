@@ -4,6 +4,8 @@ open Plato.Ast
 
 let input =
     {|
+    let a = 20;
+
     fn add(x: int, y: int) -> int {
         return x + y * 1;
     }
@@ -13,6 +15,9 @@ let input =
         let b = 10;
         let c = true && false || true;
         let x = add(a, b);
+        if x >= 10 && c {
+            a = 2;
+        }
         return 0;
     }
 |}

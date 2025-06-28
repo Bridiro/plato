@@ -52,8 +52,13 @@ type func = {
   body : block;
 }
 
+(* === GLobal declaration definition === *)
+type decl =
+  | GlobalLet of string * expr
+  | Func of func
+
 (* === Whole Program === *)
-type program = func list
+type program = decl list
 
 (* === Pretty Printing === *)
 val string_of_ty : ty -> string
@@ -62,4 +67,5 @@ val string_of_expr : expr -> string
 val string_of_stmt : stmt -> string
 val string_of_param : param -> string
 val string_of_func : func -> string
+val string_of_decl : decl -> string
 val string_of_program : program -> string

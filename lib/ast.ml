@@ -52,8 +52,13 @@ type func = {
   body : block;
 }
 
+(* === GLobal declaration definition === *)
+type decl =
+  | GlobalLet of string * expr
+  | Func of func
+
 (* === Whole Program === *)
-type program = func list
+type program = decl list
 
 (* === Pretty Printing === *)
 let string_of_ty = function
@@ -125,5 +130,11 @@ let string_of_func f =
           (string_of_ty f.return_ty)
           body
 
+let string_of_decl = function
+    | GlobalLet (name, e) ->
+        Printf.sprintf "let %s = %s;" name
+          (string_of_expr e)
+    | Func f -> string_of_func f
+
 let string_of_program p =
-    String.concat "\n\n" (List.map string_of_func p)
+    String.concat "\n\n" (List.map string_of_decl p)

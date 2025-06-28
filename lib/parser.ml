@@ -294,12 +294,23 @@ let parse_program tokens =
         match peek state with
             | Some { node = Keyword K_fn; _ } ->
                 let f = parse_func state in
-                    loop (f :: acc)
+                    loop (Func f :: acc)
+            | Some { node = Keyword K_let; _ } -> (
+                let stmt = parse_let state in
+                    match stmt with
+                        | Let (name, value) ->
+                            loop
+                              (GlobalLet (name, value)
+                              :: acc)
+                        | _ ->
+                            failwith
+                              "Expected let declaration at \
+                               top level")
             | Some { node; span } ->
                 failwith
                   (Printf.sprintf
-                     "Expected function definition but got \
-                      %s at %s"
+                     "Unexpected token at top level: %s at \
+                      %s"
                      (show_token node) (show_span span))
             | None -> List.rev acc
     in
