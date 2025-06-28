@@ -1,0 +1,9 @@
+let a: int = 3;
+let b: bool = true;
+
+fn main() -> int {
+    if b {
+        return a + 1;
+    }
+    a
+}

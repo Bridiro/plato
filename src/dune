@@ -1,4 +1,6 @@
 (executable
- (public_name plato)
  (name main)
+ (public_name plato)
+ (package plato)
+ (modules main)
  (libraries plato))

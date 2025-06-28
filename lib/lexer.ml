@@ -1,5 +1,7 @@
 open Token
 
+exception LexerError of string * span option
+
 type lexer_state = {
   input : string;
   length : int;
@@ -34,6 +36,19 @@ let advance state =
             state.column <- state.column + 1
         | None -> ()
 
+let start_position state : position =
+    { line = state.line; column = state.column }
+
+let end_position state : position =
+    { line = state.line; column = state.column }
+
+let make_span start_pos state =
+    { start_pos; end_pos = end_position state }
+
+(* Helper to create a located token *)
+let make_located_token node start_pos state =
+    Some { node; span = make_span start_pos state }
+
 let rec skip_whitespace state =
     match peek state with
         | Some (' ' | '\t' | '\r' | '\n') ->
@@ -54,20 +69,6 @@ let rec skip_whitespace state =
             skip_whitespace state
             (* Continue skipping any whitespace/comments after this line *)
         | _ -> ()
-
-let start_position state : position =
-    { line = state.line; column = state.column }
-
-let end_position state : position =
-    { line = state.line; column = state.column }
-
-(* Helper to create a located token *)
-let make_located_token node start_pos state =
-    Some
-      {
-        node;
-        span = { start_pos; end_pos = end_position state };
-      }
 
 let is_ident_char c =
     match c with
@@ -145,27 +146,38 @@ let lex_char state start =
                         advance state;
                         '\''
                     | Some c ->
-                        failwith
-                          (Printf.sprintf
-                             "Unknown escape sequence: \\%c"
-                             c)
+                        raise
+                          (LexerError
+                             ( "Unknown escape sequence: \\"
+                               ^ Char.escaped c,
+                               Some (make_span start state)
+                             ))
                     | None ->
-                        failwith
-                          "Unterminated escape sequence in \
-                           character literal")
+                        raise
+                          (LexerError
+                             ( "Unterminated escape \
+                                sequence in character \
+                                literal",
+                               Some (make_span start state)
+                             )))
             | Some c ->
                 advance state;
                 c
             | None ->
-                failwith "Unterminated character literal"
+                raise
+                  (LexerError
+                     ( "Unterminated character literal",
+                       Some (make_span start state) ))
     in
 
     (* Expect closing '\'' *)
     (match peek state with
         | Some '\'' -> advance state
         | _ ->
-            failwith
-              "Expected closing ' in character literal");
+            raise
+              (LexerError
+                 ( "Expected closing ' in character literal",
+                   Some (make_span start state) )));
 
     make_located_token (Char ch) start state
 
@@ -217,11 +229,12 @@ let next_token state : located_token option =
                         | Some '=' ->
                             advance_and_make_token NotEq
                         | _ ->
-                            failwith
-                              (Printf.sprintf
-                                 "Unknown character: ! at \
-                                  %d:%d"
-                                 state.line state.column))
+                            raise
+                              (LexerError
+                                 ( "Unknown character: '!'",
+                                   Some
+                                     (make_span start state)
+                                 )))
                 | '<' -> (
                     advance state;
                     match peek state with
@@ -244,22 +257,24 @@ let next_token state : located_token option =
                         | Some '&' ->
                             advance_and_make_token AndAnd
                         | _ ->
-                            failwith
-                              (Printf.sprintf
-                                 "Unknown character '&' at \
-                                  %d:%d"
-                                 state.line state.column))
+                            raise
+                              (LexerError
+                                 ( "Unknown character: '&'",
+                                   Some
+                                     (make_span start state)
+                                 )))
                 | '|' -> (
                     advance state;
                     match peek state with
                         | Some '|' ->
                             advance_and_make_token OrOr
                         | _ ->
-                            failwith
-                              (Printf.sprintf
-                                 "Unknown character '|' at \
-                                  %d:%d"
-                                 state.line state.column))
+                            raise
+                              (LexerError
+                                 ( "Unknown character: '|'",
+                                   Some
+                                     (make_span start state)
+                                 )))
                 (* Character type *)
                 | '\'' -> lex_char state start
                 (* Literals and Keywords *)
@@ -269,7 +284,7 @@ let next_token state : located_token option =
                 | '0' .. '9' -> lex_number state start
                 (* Default case -- error *)
                 | _ ->
-                    failwith
-                      (Printf.sprintf
-                         "Unknown character: %c at %d:%d" c
-                         state.line state.column))
+                    raise
+                      (LexerError
+                         ( "Unknown character: " ^ Char.escaped c,
+                           Some (make_span start state) )))

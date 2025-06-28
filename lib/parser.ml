@@ -1,6 +1,8 @@
 open Token
 open Ast
 
+exception ParserError of string * span option
+
 (* === Parser State === *)
 type parser_state = {
   tokens : located_token array;
@@ -37,11 +39,14 @@ let expect state expected =
         | Some { node; span = _ } when node = expected ->
             advance state
         | Some { node; span } ->
-            failwith
-              (Printf.sprintf "Expected %s but got %s at %s"
-                 (show_token expected)
-                 (show_token node) (show_span span))
-        | None -> failwith "Unexpected end of input"
+            raise
+              (ParserError
+                 ( "Expected " ^ show_token expected
+                   ^ " but got " ^ show_token node,
+                   Some span ))
+        | None ->
+            raise
+              (ParserError ("Unexpected end of input", None))
 
 let eat_ident state =
     match peek state with
@@ -49,11 +54,15 @@ let eat_ident state =
             advance state;
             name
         | Some { node; span } ->
-            failwith
-              (Printf.sprintf
-                 "Expected identifier but got %s at %s"
-                 (show_token node) (show_span span))
-        | None -> failwith "Expected identifier but got EOF"
+            raise
+              (ParserError
+                 ( "Expected identifier but got "
+                   ^ show_token node,
+                   Some span ))
+        | None ->
+            raise
+              (ParserError
+                 ("Expected identifier but got EOF", None))
 
 let parse_ty state =
     match peek state with
@@ -76,11 +85,15 @@ let parse_ty state =
             advance state;
             TyIdent s
         | Some { node; span } ->
-            failwith
-              (Printf.sprintf
-                 "Unexpected token in type: %s at %s"
-                 (show_token node) (show_span span))
-        | None -> failwith "Expected type but found EOF"
+            raise
+              (ParserError
+                 ( "Unexpected token in type "
+                   ^ show_token node,
+                   Some span ))
+        | None ->
+            raise
+              (ParserError
+                 ("Expected type but got EOF", None))
 
 let parse_param state =
     let name = eat_ident state in
@@ -101,16 +114,18 @@ let parse_param_list state =
                         | Some { node = RParen; _ } ->
                             loop (param :: acc)
                         | Some { node; span } ->
-                            failwith
-                              (Printf.sprintf
-                                 "Expected , or ) but got \
-                                  %s at %s"
-                                 (show_token node)
-                                 (show_span span))
+                            raise
+                              (ParserError
+                                 ( "Expected ',' or ')' \
+                                    but got "
+                                   ^ show_token node,
+                                   Some span ))
                         | None ->
-                            failwith
-                              "Unexpected EOF in parameter \
-                               list")
+                            raise
+                              (ParserError
+                                 ( "Unexpected EOF in \
+                                    parameter list",
+                                   None )))
     in
         loop []
 
@@ -137,9 +152,9 @@ let token_to_bin_op = function
     | Token.AndAnd -> And
     | Token.OrOr -> Or
     | t ->
-        failwith
-          (Printf.sprintf "Not a binary operator: %s"
-             (show_token t))
+        raise
+          (ParserError
+             ("Not a binary operator: " ^ show_token t, None))
 
 let rec parse_expr state = parse_binary_expr state 0
 
@@ -159,16 +174,18 @@ and parse_argument_list state =
                             advance state;
                             List.rev (arg :: acc)
                         | Some { node; span } ->
-                            failwith
-                              (Printf.sprintf
-                                 "Expected ',' or ')' but \
-                                  got %s at %s"
-                                 (show_token node)
-                                 (show_span span))
+                            raise
+                              (ParserError
+                                 ( "Expected ',' or ')' \
+                                    but got "
+                                   ^ show_token node,
+                                   Some span ))
                         | None ->
-                            failwith
-                              "Unexpected EOF in argument \
-                               list"
+                            raise
+                              (ParserError
+                                 ( "Unexpected EOF in \
+                                    parameter list",
+                                   None ))
             in
                 loop []
 
@@ -201,13 +218,15 @@ and parse_primary_expr state =
                     expect state RParen;
                     e
             | Some { node; span } ->
-                failwith
-                  (Printf.sprintf
-                     "Unexpected token in expression: %s \
-                      at %s"
-                     (show_token node) (show_span span))
+                raise
+                  (ParserError
+                     ( "Unexpected token in expression "
+                       ^ show_token node,
+                       Some span ))
             | None ->
-                failwith "Unexpected EOF in expression"
+                raise
+                  (ParserError
+                     ("Unexpected EOF in expression", None))
     in
         parse_postfix base
 
@@ -300,20 +319,24 @@ and parse_stmt state =
                         expect state Semicolon;
                         Assign (name, value)
                 | Some { node; span } ->
-                    failwith
-                      (Printf.sprintf
-                         "Unexpected token after \
-                          identifier: %s at %s"
-                         (show_token node) (show_span span))
+                    raise
+                      (ParserError
+                         ( "Unexpected token after \
+                            identifier " ^ show_token node,
+                           Some span ))
                 | None ->
-                    failwith
-                      "Unexpected EOF after identifier")
+                    raise
+                      (ParserError
+                         ( "Unexpected EOF after identifier",
+                           None )))
         | Some _ ->
             let e = parse_expr state in
                 expect state Semicolon;
                 Expr e
         | None ->
-            failwith "Unexpected end of input in statement"
+            raise
+              (ParserError
+                 ("Unexpected end of input stream", None))
 
 and is_start_of_expr = function
     | Token.Ident _
@@ -381,22 +404,26 @@ let parse_program tokens =
                     match stmt with
                         | Let (name, Some ty, value) ->
                             loop
-                              (GlobalLet (name, Some ty, value)
+                              (GlobalLet
+                                 (name, Some ty, value)
                               :: acc)
                         | Let (name, None, value) ->
                             loop
                               (GlobalLet (name, None, value)
                               :: acc)
                         | _ ->
-                            failwith
-                              "Expected let declaration at \
-                               top level")
+                            raise
+                              (ParserError
+                                 ( "Expected let \
+                                    declaration at top \
+                                    level",
+                                   None )))
             | Some { node; span } ->
-                failwith
-                  (Printf.sprintf
-                     "Unexpected token at top level: %s at \
-                      %s"
-                     (show_token node) (show_span span))
+                raise
+                  (ParserError
+                     ( "Unexpected token at top level "
+                       ^ show_token node,
+                       Some span ))
             | None -> List.rev acc
     in
         loop []
