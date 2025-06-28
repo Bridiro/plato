@@ -28,8 +28,10 @@ type bin_op =
 (* === Expressions === *)
 type expr =
   | Int of int
+  | Float of float
   | Bool of bool
   | Char of char
+  | Unit
   | Ident of string
   | Binary of expr * bin_op * expr
   | Call of expr * expr list
@@ -86,8 +88,10 @@ let string_of_bin_op = function
 
 let rec string_of_expr = function
     | Int i -> string_of_int i
+    | Float f -> string_of_float f
     | Bool b -> string_of_bool b
     | Char c -> Printf.sprintf "'%c'" c
+    | Unit -> "()"
     | Ident s -> s
     | Binary (lhs, op, rhs) ->
         Printf.sprintf "(%s %s %s)"

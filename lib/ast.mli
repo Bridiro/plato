@@ -28,8 +28,10 @@ type bin_op =
 (* === Expressions === *)
 type expr =
   | Int of int
+  | Float of float
   | Bool of bool
   | Char of char
+  | Unit
   | Ident of string
   | Binary of expr * bin_op * expr
   | Call of expr * expr list
