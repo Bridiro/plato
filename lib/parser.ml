@@ -20,6 +20,18 @@ let advance state =
     if state.pos < Array.length state.tokens then
       state.pos <- state.pos + 1
 
+let peek_next_two state =
+    match peek state with
+        | None -> None
+        | Some first -> (
+            advance state;
+            let second = peek state in
+                state.pos <- state.pos - 1;
+                (* rewind *)
+                    match second with
+                    | Some s -> Some (first, s)
+                    | None -> None)
+
 let expect state expected =
     match peek state with
         | Some { node; span = _ } when node = expected ->
@@ -296,19 +308,44 @@ and parse_stmt state =
         | None ->
             failwith "Unexpected end of input in statement"
 
-and parse_block state =
+and is_start_of_expr = function
+    | Token.Ident _ | Token.Int _ | Token.Float _ | Token.Bool _ | Token.Char _
+    | Keyword K_if
+    | Keyword K_true
+    | Keyword K_false
+    | LParen -> true
+    | _ -> false
+
+and parse_block state : block =
     expect state LBrace;
-    let rec loop acc =
+    let rec collect acc =
         match peek state with
             | Some { node = RBrace; _ } ->
                 advance state;
                 List.rev acc
-            | Some _ ->
-                let stmt = parse_stmt state in
-                    loop (stmt :: acc)
-            | None -> failwith "Unexpected EOF in block"
+            | _ ->
+                let stmt =
+                    match peek_next_two state with
+                        | Some
+                            ( expr_token,
+                              { node = Semicolon; _ } )
+                          when is_start_of_expr
+                                 expr_token.node ->
+                            let e = parse_expr state in
+                                expect state Semicolon;
+                                Expr e
+                        | Some
+                            ( expr_token,
+                              { node = RBrace; _ } )
+                          when is_start_of_expr
+                                 expr_token.node ->
+                            let e = parse_expr state in
+                                ExprValue e
+                        | _ -> parse_stmt state
+                in
+                    collect (stmt :: acc)
     in
-        loop []
+        collect []
 
 let parse_func state =
     expect state (Keyword K_fn);

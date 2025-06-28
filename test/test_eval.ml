@@ -5,19 +5,22 @@ open Plato.Lexer
 let () =
     let source =
         {|
-    let x = 2;
+    let a = 20;
 
-    fn add(a: int, b: int) -> int {
-      return a + b;
+    fn add(x: int, y: int) -> int {
+        return x + y * 1;
     }
 
     fn main() -> int {
-      let y = add(x, 7);
-      if y > 10 {
-        return 42;
-      } else {
-        return 0;
-      }
+        let a = 3;
+        let b = 10;
+        let c = true && false || true;
+        let x = add(a, b);
+        if x >= 10 && c {
+            2
+        } else {
+            1
+        }
     }
   |}
     in

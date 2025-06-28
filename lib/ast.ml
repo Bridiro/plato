@@ -41,6 +41,7 @@ and stmt =
   | Let of string * expr
   | Return of expr
   | Expr of expr
+  | ExprValue of expr
   | Assign of string * expr
   | If of expr * block * block option
 
@@ -109,7 +110,8 @@ and string_of_stmt = function
           (string_of_expr e)
     | Return e ->
         Printf.sprintf "return %s;" (string_of_expr e)
-    | Expr e -> Printf.sprintf "%s;" (string_of_expr e)
+    | Expr e | ExprValue e ->
+        Printf.sprintf "%s;" (string_of_expr e)
     | Assign (name, e) ->
         Printf.sprintf "%s = %s;" name (string_of_expr e)
     | If (cond, then_b, Some else_b) ->

@@ -86,6 +86,9 @@ and exec_stmt (funcs : func_env) (env : env) (stmt : stmt) :
         | Expr e ->
             let _ = eval_expr funcs env e in
                 (env, None)
+        | ExprValue e ->
+            let v = eval_expr funcs env e in
+                (env, Some v)
         | Return e ->
             let v = eval_expr funcs env e in
                 (env, Some v)

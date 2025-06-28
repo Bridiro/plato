@@ -41,6 +41,7 @@ and stmt =
   | Let of string * expr
   | Return of expr
   | Expr of expr
+  | ExprValue of expr
   | Assign of string * expr
   | If of expr * block * block option
 
