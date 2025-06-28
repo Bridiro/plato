@@ -251,10 +251,17 @@ and parse_binary_rhs state min_prec lhs =
 let parse_let state =
     expect state (Keyword K_let);
     let name = eat_ident state in
+    let ty =
+        match peek state with
+            | Some { node = Colon; _ } ->
+                advance state;
+                Some (parse_ty state)
+            | _ -> None
+    in
         expect state Assign;
         let value = parse_expr state in
             expect state Semicolon;
-            Let (name, value)
+            Let (name, ty, value)
 
 let parse_return state =
     expect state (Keyword K_return);
@@ -309,7 +316,11 @@ and parse_stmt state =
             failwith "Unexpected end of input in statement"
 
 and is_start_of_expr = function
-    | Token.Ident _ | Token.Int _ | Token.Float _ | Token.Bool _ | Token.Char _
+    | Token.Ident _
+    | Token.Int _
+    | Token.Float _
+    | Token.Bool _
+    | Token.Char _
     | Keyword K_if
     | Keyword K_true
     | Keyword K_false
@@ -368,9 +379,13 @@ let parse_program tokens =
             | Some { node = Keyword K_let; _ } -> (
                 let stmt = parse_let state in
                     match stmt with
-                        | Let (name, value) ->
+                        | Let (name, Some ty, value) ->
                             loop
-                              (GlobalLet (name, value)
+                              (GlobalLet (name, Some ty, value)
+                              :: acc)
+                        | Let (name, None, value) ->
+                            loop
+                              (GlobalLet (name, None, value)
                               :: acc)
                         | _ ->
                             failwith

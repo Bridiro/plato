@@ -38,7 +38,7 @@ type expr =
 
 (* === Statements === *)
 and stmt =
-  | Let of string * expr
+  | Let of string * ty option * expr
   | Return of expr
   | Expr of expr
   | ExprValue of expr
@@ -58,7 +58,7 @@ type func = {
 
 (* === GLobal declaration definition === *)
 type decl =
-  | GlobalLet of string * expr
+  | GlobalLet of string * ty option * expr
   | Func of func
 
 (* === Whole Program === *)
@@ -105,15 +105,16 @@ let rec string_of_expr = function
              (List.map string_of_expr args))
 
 and string_of_stmt = function
-    | Let (name, e) ->
+    | Let (name, Some ty, e) ->
+        Printf.sprintf "let %s: %s = %s;" name
+          (string_of_ty ty) (string_of_expr e)
+    | Let (name, None, e) ->
         Printf.sprintf "let %s = %s;" name
-          (string_of_expr e)
+        (string_of_expr e)
     | Return e ->
         Printf.sprintf "return %s;" (string_of_expr e)
-    | Expr e ->
-        Printf.sprintf "%s;" (string_of_expr e)
-    | ExprValue e ->
-        string_of_expr e
+    | Expr e -> Printf.sprintf "%s;" (string_of_expr e)
+    | ExprValue e -> string_of_expr e
     | Assign (name, e) ->
         Printf.sprintf "%s = %s;" name (string_of_expr e)
     | If (cond, then_b, Some else_b) ->
@@ -147,7 +148,11 @@ let string_of_func f =
           body
 
 let string_of_decl = function
-    | GlobalLet (name, e) ->
+    | GlobalLet (name, Some ty, e) ->
+        Printf.sprintf "let %s: %s = %s;" name
+          (string_of_ty ty)
+          (string_of_expr e)
+    | GlobalLet (name, None, e) ->
         Printf.sprintf "let %s = %s;" name
           (string_of_expr e)
     | Func f -> string_of_func f

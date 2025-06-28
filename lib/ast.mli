@@ -38,7 +38,7 @@ type expr =
 
 (* === Statements === *)
 and stmt =
-  | Let of string * expr
+  | Let of string * ty option * expr
   | Return of expr
   | Expr of expr
   | ExprValue of expr
@@ -58,7 +58,7 @@ type func = {
 
 (* === GLobal declaration definition === *)
 type decl =
-  | GlobalLet of string * expr
+  | GlobalLet of string * ty option * expr
   | Func of func
 
 (* === Whole Program === *)

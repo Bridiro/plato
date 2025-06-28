@@ -72,7 +72,7 @@ let rec eval_expr (funcs : func_env) (env : env) (e : expr)
 and exec_stmt (funcs : func_env) (env : env) (stmt : stmt) :
     env * value option =
     match stmt with
-        | Let (name, e) ->
+        | Let (name, _, e) ->
             let v = eval_expr funcs env e in
                 (Env.add name v env, None)
         | Assign (name, e) ->
@@ -148,7 +148,7 @@ let run_program (prog : program) : value =
         List.fold_left
           (fun acc decl ->
             match decl with
-                | GlobalLet (name, e) ->
+                | GlobalLet (name, _, e) ->
                     let v = eval_expr [] acc e in
                         Env.add name v acc
                 | _ -> acc)

@@ -4,7 +4,7 @@ open Plato.Ast
 
 let input =
     {|
-    let a = 20;
+    let a: int = 20;
 
     fn add(x: int, y: int) -> int {
         return x + y * 1;
