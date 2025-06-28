@@ -110,19 +110,21 @@ and string_of_stmt = function
           (string_of_expr e)
     | Return e ->
         Printf.sprintf "return %s;" (string_of_expr e)
-    | Expr e | ExprValue e ->
+    | Expr e ->
         Printf.sprintf "%s;" (string_of_expr e)
+    | ExprValue e ->
+        string_of_expr e
     | Assign (name, e) ->
         Printf.sprintf "%s = %s;" name (string_of_expr e)
     | If (cond, then_b, Some else_b) ->
-        Printf.sprintf "if %s {\n  %s\n} else {\n  %s\n}"
+        Printf.sprintf "if %s { %s } else { %s }"
           (string_of_expr cond)
           (String.concat "\n  "
              (List.map string_of_stmt then_b))
           (String.concat "\n  "
              (List.map string_of_stmt else_b))
     | If (cond, then_b, None) ->
-        Printf.sprintf "if %s {\n  %s\n}"
+        Printf.sprintf "if %s { %s }"
           (string_of_expr cond)
           (String.concat "\n  "
              (List.map string_of_stmt then_b))
