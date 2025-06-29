@@ -5,23 +5,20 @@ open Plato.Lexer
 let () =
     let source =
         {|
-    let a: int = 20;
+let a: int = 3;
+let b: bool = true;
 
-    fn add(x: int, y: int) -> int {
-        return x + y * 1;
-    }
+fn mul(x: int, y: int) -> int {
+    let r = x * y;
+    r
+}
 
-    fn main() -> int {
-        let a = 3;
-        let b = 10;
-        let c = true && false || true;
-        let x = add(a, b);
-        if x >= 10 && c {
-            2
-        } else {
-            1
-        }
+fn main() -> int {
+    if b {
+        return mul(a, 2);
     }
+    a
+}
   |}
     in
 
