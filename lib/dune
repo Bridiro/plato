@@ -1,4 +1,18 @@
 (library
  (name plato)
  (public_name plato)
- (modules token lexer ast parser eval typecheck))
+ (libraries menhirLib)
+ (modules ast tokens lexer parser)
+ (preprocess (pps ppx_deriving.show)))
+
+(rule
+ (targets parser.ml parser.mli)
+ (deps parser.mly)
+ (action
+  (run menhir --explain parser.mly)))
+
+(rule
+ (target tokens.ml)
+ (deps parser.mly)
+ (action
+  (run menhir --only-tokens parser.mly)))

@@ -1,5 +1,7 @@
 (lang dune 3.19)
 
+(using menhir 2.0)
+
 (name plato)
 
 (generate_opam_files true)
@@ -15,7 +17,7 @@
  (name plato)
  (synopsis "A minimal statically typed language")
  (description "Plato is a statically typed, compiled language. Designed to be small, fast and educational")
- (depends (ocaml (>= 5.1)))
+ (depends ocaml menhir dune ppx_deriving)
  (tags
   ("language" "compiler")))
 

@@ -7,8 +7,3 @@
  (name test_parser)
  (modules test_parser)
  (libraries plato))
-
-(test
- (name test_eval)
- (modules test_eval)
- (libraries plato))

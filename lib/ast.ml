@@ -1,161 +1,229 @@
-(* === Types === *)
-type ty =
-  | TyInt
-  | TyFloat
-  | TyBool
-  | TyChar
-  | TyUnit
-  | TyIdent of string
+type position = {
+  line : int;
+  column : int;
+}
 
-(* === Function Parameters === *)
-type param = string * ty
+type 'a located = {
+  loc : position;
+  value : 'a;
+}
 
-(* === Binary Operators === *)
-type bin_op =
+type integer_suffix =
+  | I8
+  | I16
+  | I32
+  | I64
+  | U8
+  | U16
+  | U32
+  | U64
+  | Usize
+
+type float_suffix =
+  | F32
+  | F64
+
+type literal =
+  | IntLit of int * integer_suffix option
+  | FloatLit of float * float_suffix option
+  | StringLit of string
+  | CharLit of char
+  | BoolLit of bool
+  | UnitLit
+  | NullLit
+
+type path = string list
+
+type primitive_type =
+  | I8
+  | I16
+  | I32
+  | I64
+  | U8
+  | U16
+  | U32
+  | U64
+  | Usize
+  | F32
+  | F64
+  | Bool
+  | Char
+  | Str
+  | Void
+
+type plato_type =
+  | PrimType of primitive_type
+  | ArrayType of plato_type * expression
+  | PointerType of plato_type
+  | FunctionType of plato_type list * plato_type option
+  | PathType of path * plato_type list option
+  | GenericType of string
+
+and binary_op =
   | Add
   | Sub
   | Mul
   | Div
+  | Mod
   | Eq
-  | Neq
+  | Ne
   | Lt
-  | Le
   | Gt
+  | Le
   | Ge
   | And
   | Or
+  | BitAnd
+  | BitOr
+  | BitXor
+  | Shl
+  | Shr
 
-(* === Expressions === *)
-type expr =
-  | Int of int
-  | Float of float
-  | Bool of bool
-  | Char of char
-  | Unit
-  | Ident of string
-  | Binary of expr * bin_op * expr
-  | Call of expr * expr list
+and unary_op =
+  | Not
+  | Neg
+  | Deref
+  | Ref
+  | Sizeof
 
-(* === Statements === *)
-and stmt =
-  | Let of string * ty option * expr
-  | Return of expr
-  | Expr of expr
-  | ExprValue of expr
-  | Assign of string * expr
-  | If of expr * block * block option
+and assign_op =
+  | Assign
+  | AddAssign
+  | SubAssign
+  | MulAssign
+  | DivAssign
+  | ModAssign
+  | BitAndAssign
+  | BitOrAssign
+  | BitXorAssign
+  | ShlAssign
+  | ShrAssign
 
-(* === Function Body === *)
-and block = stmt list
+and expression =
+  | Literal of literal
+  | Identifier of string
+  | BinaryOp of expression * binary_op * expression
+  | UnaryOp of unary_op * expression
+  | Cast of expression * plato_type
+  | Index of expression * expression
+  | FieldAccess of expression * string
+  | PointerAccess of expression * string
+  | FunctionCall of expression * expression list
+  | ArrayExpr of expression list
+  | StructExpr of path * (string * expression) list
+  | Block of block
+  | If of expression * block * block option
+  | Match of expression * match_arm list
+  | Loop of block
+  | While of expression * block
+  | For of string * expression * block
+  | Return of expression option
+  | Break of expression option
+  | Continue
 
-(* === Function Definitions === *)
-type func = {
-  name : string;
-  params : param list;
-  return_ty : ty;
-  body : block;
+and match_arm = MatchArm of pattern * expression
+
+and pattern =
+  | LiteralPattern of literal
+  | IdentifierPattern of string
+  | WildcardPattern
+  | EnumPattern of path * pattern list option
+  | TuplePattern of pattern list
+
+and statement =
+  | LetStmt of bool * string * plato_type option * expression option
+  | AssignStmt of lvalue * assign_op * expression
+  | ExprStmt of expression
+  | ItemStmt of item
+
+and lvalue =
+  | LvalueId of string
+  | LvalueDeref of lvalue
+  | LvalueIndex of lvalue * expression
+  | LvalueField of lvalue * string
+  | LvaluePointer of lvalue * string
+
+and block = statement list * expression option
+
+and visibility =
+  | Public
+  | Private
+
+and generic_param = string * path list option
+
+and field_def = {
+  field_vis : visibility;
+  field_name : string;
+  field_type : plato_type;
 }
 
-(* === GLobal declaration definition === *)
-type decl =
-  | GlobalLet of string * ty option * expr
-  | Func of func
+and enum_variant = {
+  variant_name : string;
+  variant_data : plato_type list option;
+  variant_value : int option;
+}
 
-(* === Whole Program === *)
-type program = decl list
+and param = {
+  param_name : string;
+  param_type : plato_type;
+}
 
-(* === Pretty Printing === *)
-let string_of_ty = function
-    | TyInt -> "int"
-    | TyFloat -> "float"
-    | TyBool -> "bool"
-    | TyChar -> "char"
-    | TyUnit -> "unit"
-    | TyIdent id -> id
+and function_def = {
+  func_vis : visibility;
+  func_name : string;
+  func_generics : generic_param list;
+  func_params : param list;
+  func_return : plato_type option;
+  func_body : block;
+}
 
-let string_of_bin_op = function
-    | Add -> "+"
-    | Sub -> "-"
-    | Mul -> "*"
-    | Div -> "/"
-    | Eq -> "=="
-    | Neq -> "!="
-    | Lt -> "<"
-    | Le -> "<="
-    | Gt -> ">"
-    | Ge -> ">="
-    | And -> "&&"
-    | Or -> "||"
+and struct_def = {
+  struct_vis : visibility;
+  struct_name : string;
+  struct_generics : generic_param list;
+  struct_fields : field_def list;
+}
 
-let rec string_of_expr = function
-    | Int i -> string_of_int i
-    | Float f -> string_of_float f
-    | Bool b -> string_of_bool b
-    | Char c -> Printf.sprintf "'%c'" c
-    | Unit -> "()"
-    | Ident s -> s
-    | Binary (lhs, op, rhs) ->
-        Printf.sprintf "(%s %s %s)"
-          (string_of_expr lhs)
-          (string_of_bin_op op)
-          (string_of_expr rhs)
-    | Call (fn, args) ->
-        Printf.sprintf "%s(%s)" (string_of_expr fn)
-          (String.concat ", "
-             (List.map string_of_expr args))
+and enum_def = {
+  enum_vis : visibility;
+  enum_name : string;
+  enum_generics : generic_param list;
+  enum_variants : enum_variant list;
+}
 
-and string_of_stmt = function
-    | Let (name, Some ty, e) ->
-        Printf.sprintf "let %s: %s = %s;" name
-          (string_of_ty ty) (string_of_expr e)
-    | Let (name, None, e) ->
-        Printf.sprintf "let %s = %s;" name
-        (string_of_expr e)
-    | Return e ->
-        Printf.sprintf "return %s;" (string_of_expr e)
-    | Expr e -> Printf.sprintf "%s;" (string_of_expr e)
-    | ExprValue e -> string_of_expr e
-    | Assign (name, e) ->
-        Printf.sprintf "%s = %s;" name (string_of_expr e)
-    | If (cond, then_b, Some else_b) ->
-        Printf.sprintf "if %s { %s } else { %s }"
-          (string_of_expr cond)
-          (String.concat "\n  "
-             (List.map string_of_stmt then_b))
-          (String.concat "\n  "
-             (List.map string_of_stmt else_b))
-    | If (cond, then_b, None) ->
-        Printf.sprintf "if %s { %s }"
-          (string_of_expr cond)
-          (String.concat "\n  "
-             (List.map string_of_stmt then_b))
+and trait_item =
+  | TraitFunction of
+      string * generic_param list * param list * plato_type option
+  | AssociatedType of string * path list option
 
-let string_of_param (name, ty) =
-    Printf.sprintf "%s: %s" name (string_of_ty ty)
+and trait_def = {
+  trait_vis : visibility;
+  trait_name : string;
+  trait_generics : generic_param list;
+  trait_items : trait_item list;
+}
 
-let string_of_func f =
-    let params =
-        String.concat ", "
-          (List.map string_of_param f.params)
-    in
-    let body =
-        String.concat "\n  "
-          (List.map string_of_stmt f.body)
-    in
-        Printf.sprintf "fn %s(%s) -> %s {\n  %s\n}" f.name
-          params
-          (string_of_ty f.return_ty)
-          body
+and impl_item =
+  | ImplFunction of function_def
+  | ImplTypeAlias of string * plato_type
 
-let string_of_decl = function
-    | GlobalLet (name, Some ty, e) ->
-        Printf.sprintf "let %s: %s = %s;" name
-          (string_of_ty ty)
-          (string_of_expr e)
-    | GlobalLet (name, None, e) ->
-        Printf.sprintf "let %s = %s;" name
-          (string_of_expr e)
-    | Func f -> string_of_func f
+and impl_def = {
+  impl_generics : generic_param list;
+  impl_trait : path option;
+  impl_type : plato_type;
+  impl_items : impl_item list;
+}
 
-let string_of_program p =
-    String.concat "\n\n" (List.map string_of_decl p)
+and item =
+  | Function of function_def
+  | Struct of struct_def
+  | Enum of enum_def
+  | Trait of trait_def
+  | Impl of impl_def
+  | GlobalVar of
+      visibility * bool * bool * string * plato_type option * expression
+  | TypeAlias of visibility * string * generic_param list * plato_type
+  | Use of visibility * path
+  | Mod of visibility * string * item list option
+
+type program = item list

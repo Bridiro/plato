@@ -1,25 +1,23 @@
 let test_input =
-    {|
+  {|
   fn main() -> int {
     let x = 42;
     let y = x + 3.14;
     if x == 45.14 {
-        return x;
+        x
     } else {
-        return y;
+        y
     }
   }
 |}
-
-let () =
-    let state = Plato.Lexer.init_lexer test_input in
-    let rec loop () =
-        match Plato.Lexer.next_token state with
-            | Some { node; span } ->
-                Printf.printf "%s @ %s\n"
-                  (Plato.Token.show_token node)
-                  (Plato.Token.show_span span);
-                loop ()
-            | None -> ()
-    in
-        loop ()
+in
+try
+  let tokens = Plato.Lexer.tokenize test_input in
+  List.iter
+    (fun x -> Printf.printf "%s\n" (Plato.Tokens.string_of_token x))
+    tokens;
+  flush_all ()
+with
+| e -> 
+  Printf.printf "Exception: %s\n" (Printexc.to_string e);
+  flush_all ()

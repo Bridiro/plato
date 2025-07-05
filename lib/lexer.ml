@@ -1,290 +1,512 @@
-open Token
+open Ast
 
-exception LexerError of string * span option
+exception LexError of string
+
+type token =
+  (* Keywords *)
+  | FN
+  | LET
+  | MUT
+  | IF
+  | ELSE
+  | WHILE
+  | FOR
+  | LOOP
+  | BREAK
+  | CONTINUE
+  | RETURN
+  | MATCH
+  | STRUCT
+  | ENUM
+  | IMPL
+  | TRAIT
+  | USE
+  | MOD
+  | PUB
+  | CONST
+  | STATIC
+  | TRUE
+  | FALSE
+  | AS
+  | TYPE
+  | IN
+  | SIZEOF
+  | NULL
+  | USIZE
+  (* Identifiers and literals *)
+  | IDENTIFIER of string
+  | INTEGER of int * integer_suffix option
+  | FLOAT of float * float_suffix option
+  | STRING of string
+  | CHAR of char
+  (* Operators *)
+  | PLUS
+  | MINUS
+  | STAR
+  | SLASH
+  | PERCENT
+  | PLUS_ASSIGN
+  | MINUS_ASSIGN
+  | STAR_ASSIGN
+  | SLASH_ASSIGN
+  | PERCENT_ASSIGN
+  | EQ
+  | NE
+  | LT
+  | GT
+  | LE
+  | GE
+  | AND
+  | OR
+  | NOT
+  | BIT_AND
+  | BIT_OR
+  | BIT_XOR
+  | SHL
+  | SHR
+  | BIT_AND_ASSIGN
+  | BIT_OR_ASSIGN
+  | BIT_XOR_ASSIGN
+  | SHL_ASSIGN
+  | SHR_ASSIGN
+  | ASSIGN
+  | ARROW
+  | DOT
+  | COMMA
+  | SEMICOLON
+  | COLON
+  | QUESTION
+  | DOTDOT
+  | DOUBLE_COLON
+  (* Delimiters *)
+  | LPAREN
+  | RPAREN
+  | LBRACKET
+  | RBRACKET
+  | LBRACE
+  | RBRACE
+  (* Special *)
+  | EOF
+
+let keywords =
+  [
+    ("fn", FN);
+    ("let", LET);
+    ("mut", MUT);
+    ("if", IF);
+    ("else", ELSE);
+    ("while", WHILE);
+    ("for", FOR);
+    ("loop", LOOP);
+    ("break", BREAK);
+    ("continue", CONTINUE);
+    ("return", RETURN);
+    ("match", MATCH);
+    ("struct", STRUCT);
+    ("enum", ENUM);
+    ("impl", IMPL);
+    ("trait", TRAIT);
+    ("use", USE);
+    ("mod", MOD);
+    ("pub", PUB);
+    ("const", CONST);
+    ("static", STATIC);
+    ("true", TRUE);
+    ("false", FALSE);
+    ("as", AS);
+    ("type", TYPE);
+    ("in", IN);
+    ("sizeof", SIZEOF);
+    ("null", NULL);
+    ("usize", USIZE);
+  ]
+
+let keyword_table = Hashtbl.create 32
+let () = List.iter (fun (k, v) -> Hashtbl.add keyword_table k v) keywords
+let is_keyword s = Hashtbl.mem keyword_table s
+let get_keyword s = Hashtbl.find keyword_table s
+let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+let is_digit c = c >= '0' && c <= '9'
+
+let is_hex_digit c =
+  is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+
+let is_octal_digit c = c >= '0' && c <= '7'
+let is_binary_digit c = c = '0' || c = '1'
+let is_alnum c = is_alpha c || is_digit c
+let is_whitespace c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
+
+let parse_integer_suffix s : integer_suffix option =
+  match s with
+  | "i8" -> Some I8
+  | "i16" -> Some I16
+  | "i32" -> Some I32
+  | "i64" -> Some I64
+  | "u8" -> Some U8
+  | "u16" -> Some U16
+  | "u32" -> Some U32
+  | "u64" -> Some U64
+  | "usize" -> Some Usize
+  | _ -> None
+
+let parse_float_suffix s : float_suffix option =
+  match s with
+  | "f32" -> Some F32
+  | "f64" -> Some F64
+  | _ -> None
+
+let parse_escape_char c =
+  match c with
+  | 'n' -> '\n'
+  | 't' -> '\t'
+  | 'r' -> '\r'
+  | '\\' -> '\\'
+  | '"' -> '"'
+  | '\'' -> '\''
+  | '0' -> '\000'
+  | _ -> raise (LexError ("Invalid escape sequence: \\" ^ String.make 1 c))
 
 type lexer_state = {
   input : string;
+  pos : int;
+  line : int;
+  column : int;
   length : int;
-  mutable pos : int;
-  mutable line : int;
-  mutable column : int;
 }
 
-let init_lexer input =
-    {
-      input;
-      length = String.length input;
-      pos = 0;
-      line = 1;
-      column = 1;
-    }
+let create_lexer input =
+  { input; pos = 0; line = 1; column = 1; length = String.length input }
 
-let peek state =
-    if state.pos < state.length then
-      Some state.input.[state.pos]
-    else
-      None
+let current_char state =
+  if state.pos >= state.length then
+    None
+  else
+    Some state.input.[state.pos]
+
+let peek_char state offset =
+  let pos = state.pos + offset in
+  if pos >= state.length then
+    None
+  else
+    Some state.input.[pos]
 
 let advance state =
-    match peek state with
-        | Some '\n' ->
-            state.pos <- state.pos + 1;
-            state.line <- state.line + 1;
-            state.column <- 1
-        | Some _ ->
-            state.pos <- state.pos + 1;
-            state.column <- state.column + 1
-        | None -> ()
+  if state.pos >= state.length then
+    state
+  else
+    let c = state.input.[state.pos] in
+    if c = '\n' then
+      { state with pos = state.pos + 1; line = state.line + 1; column = 1 }
+    else
+      { state with pos = state.pos + 1; column = state.column + 1 }
 
-let start_position state : position =
-    { line = state.line; column = state.column }
-
-let end_position state : position =
-    { line = state.line; column = state.column }
-
-let make_span start_pos state =
-    { start_pos; end_pos = end_position state }
-
-(* Helper to create a located token *)
-let make_located_token node start_pos state =
-    Some { node; span = make_span start_pos state }
+let advance_n state n =
+  let rec loop s i =
+    if i = 0 then
+      s
+    else
+      loop (advance s) (i - 1)
+  in
+  loop state n
 
 let rec skip_whitespace state =
-    match peek state with
-        | Some (' ' | '\t' | '\r' | '\n') ->
-            advance state;
-            skip_whitespace state
-        | Some '/'
-          when state.pos + 1 < state.length
-               && state.input.[state.pos + 1] = '/' ->
-            advance state;
-            (* Consume first '/' *)
-            advance state;
-            (* Consume second '/' *)
-            while
-              peek state <> Some '\n' && peek state <> None
-            do
-              advance state
-            done;
-            skip_whitespace state
-            (* Continue skipping any whitespace/comments after this line *)
-        | _ -> ()
+  match current_char state with
+  | Some c when is_whitespace c -> skip_whitespace (advance state)
+  | _ -> state
 
-let is_ident_char c =
-    match c with
-        | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
-        | _ -> false
+let rec skip_line_comment state =
+  match current_char state with
+  | Some '\n' -> advance state
+  | Some _ -> skip_line_comment (advance state)
+  | None -> state
 
-let lex_ident_or_keyword state start =
-    let buffer = Buffer.create 16 in
-        while
-          Option.map is_ident_char (peek state) = Some true
-        do
-          Buffer.add_char buffer (Option.get (peek state));
-          advance state
-        done;
-        let text = Buffer.contents buffer in
-        let node =
-            match text with
-                | "fn" -> Keyword K_fn
-                | "let" -> Keyword K_let
-                | "if" -> Keyword K_if
-                | "else" -> Keyword K_else
-                | "return" -> Keyword K_return
-                | "true" -> Bool true
-                | "false" -> Bool false
-                | _ -> Ident text
-        in
-            make_located_token node start state
+let rec skip_block_comment state depth =
+  match (current_char state, peek_char state 1) with
+  | Some '/', Some '*' -> skip_block_comment (advance_n state 2) (depth + 1)
+  | Some '*', Some '/' ->
+    let new_state = advance_n state 2 in
+    if depth = 1 then
+      new_state
+    else
+      skip_block_comment new_state (depth - 1)
+  | Some _, _ -> skip_block_comment (advance state) depth
+  | None, _ -> raise (LexError "Unterminated block comment")
 
-let lex_number state start =
-    let buffer = Buffer.create 16 in
+let rec skip_comments_and_whitespace state =
+  let state = skip_whitespace state in
+  match (current_char state, peek_char state 1) with
+  | Some '/', Some '/' ->
+    skip_comments_and_whitespace (skip_line_comment (advance_n state 2))
+  | Some '/', Some '*' ->
+    skip_comments_and_whitespace (skip_block_comment (advance_n state 2) 1)
+  | _ -> state
 
-    let rec consume_digits () =
-        match peek state with
-            | Some c when c >= '0' && c <= '9' ->
-                Buffer.add_char buffer c;
-                advance state;
-                consume_digits ()
-            | _ -> ()
+let read_identifier state =
+  let start_pos = state.pos in
+  let rec loop s =
+    match current_char s with
+    | Some c when is_alnum c || c = '_' -> loop (advance s)
+    | _ -> s
+  in
+  let end_state = loop state in
+  let len = end_state.pos - start_pos in
+  let id = String.sub state.input start_pos len in
+  (id, end_state)
+
+let read_number state =
+  let start_pos = state.pos in
+
+  let read_digits s pred =
+    let rec loop s =
+      match current_char s with
+      | Some c when pred c -> loop (advance s)
+      | _ -> s
     in
+    loop s
+  in
 
-    consume_digits ();
+  let base, start_state =
+    match (current_char state, peek_char state 1) with
+    | Some '0', Some 'x' -> (16, advance_n state 2)
+    | Some '0', Some 'o' -> (8, advance_n state 2)
+    | Some '0', Some 'b' -> (2, advance_n state 2)
+    | _ -> (10, state)
+  in
 
-    match peek state with
-        | Some '.' ->
-            advance state;
-            Buffer.add_char buffer '.';
-            consume_digits ();
-            let text = Buffer.contents buffer in
-            let value = float_of_string text in
-                make_located_token (Float value) start state
-        | _ ->
-            let text = Buffer.contents buffer in
-            let value = int_of_string text in
-                make_located_token (Int value) start state
+  let pred =
+    match base with
+    | 2 -> is_binary_digit
+    | 8 -> is_octal_digit
+    | 10 -> is_digit
+    | 16 -> is_hex_digit
+    | _ -> failwith "Invalid base"
+  in
 
-let lex_char state start =
-    advance state;
+  let after_int = read_digits start_state pred in
 
-    (* Skip opening '\'' *)
-    let ch =
-        match peek state with
-            | Some '\\' -> (
-                advance state;
-                match peek state with
-                    | Some 'n' ->
-                        advance state;
-                        '\n'
-                    | Some 't' ->
-                        advance state;
-                        '\t'
-                    | Some '\\' ->
-                        advance state;
-                        '\\'
-                    | Some '\'' ->
-                        advance state;
-                        '\''
-                    | Some c ->
-                        raise
-                          (LexerError
-                             ( "Unknown escape sequence: \\"
-                               ^ Char.escaped c,
-                               Some (make_span start state)
-                             ))
-                    | None ->
-                        raise
-                          (LexerError
-                             ( "Unterminated escape \
-                                sequence in character \
-                                literal",
-                               Some (make_span start state)
-                             )))
-            | Some c ->
-                advance state;
-                c
-            | None ->
-                raise
-                  (LexerError
-                     ( "Unterminated character literal",
-                       Some (make_span start state) ))
+  (* Check for float *)
+  let is_float, after_float =
+    if base = 10 then
+      match current_char after_int with
+      | Some '.' ->
+        let after_dot = advance after_int in
+        (true, read_digits after_dot is_digit)
+      | _ -> (false, after_int)
+    else
+      (false, after_int)
+  in
+
+  (* Read suffix *)
+  let suffix, end_state =
+    let rec loop s acc =
+      match current_char s with
+      | Some c when is_alpha c -> loop (advance s) (acc ^ String.make 1 c)
+      | _ -> (acc, s)
     in
+    loop after_float ""
+  in
 
-    (* Expect closing '\'' *)
-    (match peek state with
-        | Some '\'' -> advance state
-        | _ ->
-            raise
-              (LexerError
-                 ( "Expected closing ' in character literal",
-                   Some (make_span start state) )));
+  let num_part =
+    String.sub state.input start_pos (after_float.pos - start_pos)
+  in
 
-    make_located_token (Char ch) start state
-
-let next_token state : located_token option =
-    skip_whitespace state;
-    let start = start_position state in
-
-    (* Helper for single-character tokens *)
-    let advance_and_make_token node =
-        advance state;
-        make_located_token node start state
+  if is_float then
+    let float_val = float_of_string num_part in
+    let float_suffix =
+      if suffix = "" then
+        None
+      else
+        parse_float_suffix suffix
     in
+    (FLOAT (float_val, float_suffix), end_state)
+  else
+    (* Fix the integer parsing for different bases *)
+    let int_val =
+      if base = 10 then
+        int_of_string num_part
+      else
+        int_of_string
+          num_part (* OCaml's int_of_string handles 0x, 0o, 0b prefixes *)
+    in
+    let int_suffix =
+      if suffix = "" then
+        None
+      else
+        parse_integer_suffix suffix
+    in
+    (INTEGER (int_val, int_suffix), end_state)
 
-    match peek state with
-        | None -> None
-        | Some c -> (
-            match c with
-                (* Single character symbols *)
-                | '(' -> advance_and_make_token LParen
-                | ')' -> advance_and_make_token RParen
-                | '{' -> advance_and_make_token LBrace
-                | '}' -> advance_and_make_token RBrace
-                | '+' -> advance_and_make_token Plus
-                | '*' -> advance_and_make_token Star
-                | '/' -> advance_and_make_token Slash
-                | ',' -> advance_and_make_token Comma
-                | ':' -> advance_and_make_token Colon
-                | ';' -> advance_and_make_token Semicolon
-                (* Multi-character or context-dependent tokens *)
-                | '-' -> (
-                    advance state;
-                    match peek state with
-                        | Some '>' ->
-                            advance_and_make_token Arrow
-                        | _ ->
-                            make_located_token Minus start
-                              state)
-                | '=' -> (
-                    advance state;
-                    match peek state with
-                        | Some '=' ->
-                            advance_and_make_token EqEq
-                        | _ ->
-                            make_located_token Assign start
-                              state)
-                | '!' -> (
-                    advance state;
-                    match peek state with
-                        | Some '=' ->
-                            advance_and_make_token NotEq
-                        | _ ->
-                            raise
-                              (LexerError
-                                 ( "Unknown character: '!'",
-                                   Some
-                                     (make_span start state)
-                                 )))
-                | '<' -> (
-                    advance state;
-                    match peek state with
-                        | Some '=' ->
-                            advance_and_make_token Le
-                        | _ ->
-                            make_located_token Lt start
-                              state)
-                | '>' -> (
-                    advance state;
-                    match peek state with
-                        | Some '=' ->
-                            advance_and_make_token Ge
-                        | _ ->
-                            make_located_token Gt start
-                              state)
-                | '&' -> (
-                    advance state;
-                    match peek state with
-                        | Some '&' ->
-                            advance_and_make_token AndAnd
-                        | _ ->
-                            raise
-                              (LexerError
-                                 ( "Unknown character: '&'",
-                                   Some
-                                     (make_span start state)
-                                 )))
-                | '|' -> (
-                    advance state;
-                    match peek state with
-                        | Some '|' ->
-                            advance_and_make_token OrOr
-                        | _ ->
-                            raise
-                              (LexerError
-                                 ( "Unknown character: '|'",
-                                   Some
-                                     (make_span start state)
-                                 )))
-                (* Character type *)
-                | '\'' -> lex_char state start
-                (* Literals and Keywords *)
-                | 'a' .. 'z' | 'A' .. 'Z' ->
-                    lex_ident_or_keyword state start
-                (* Numbers *)
-                | '0' .. '9' -> lex_number state start
-                (* Default case -- error *)
-                | _ ->
-                    raise
-                      (LexerError
-                         ( "Unknown character: " ^ Char.escaped c,
-                           Some (make_span start state) )))
+let read_string state =
+  let start_state = advance state in
+  (* Skip opening quote *)
+  let buffer = Buffer.create 16 in
+
+  let rec loop s =
+    match current_char s with
+    | Some '"' -> advance s
+    | Some '\\' -> begin
+      match peek_char s 1 with
+      | Some c ->
+        let escaped = parse_escape_char c in
+        Buffer.add_char buffer escaped ;
+        loop (advance_n s 2)
+      | None -> raise (LexError "Unterminated string literal")
+    end
+    | Some c ->
+      Buffer.add_char buffer c ;
+      loop (advance s)
+    | None -> raise (LexError "Unterminated string literal")
+  in
+
+  let end_state = loop start_state in
+  let str_val = Buffer.contents buffer in
+  (STRING str_val, end_state)
+
+let read_char state =
+  let start_state = advance state in
+  (* Skip opening quote *)
+
+  let char_val, after_char =
+    match current_char start_state with
+    | Some '\\' -> begin
+      match peek_char start_state 1 with
+      | Some c -> (parse_escape_char c, advance_n start_state 2)
+      | None -> raise (LexError "Unterminated character literal")
+    end
+    | Some c -> (c, advance start_state)
+    | None -> raise (LexError "Unterminated character literal")
+  in
+
+  let end_state =
+    match current_char after_char with
+    | Some '\'' -> advance after_char
+    | _ -> raise (LexError "Unterminated character literal")
+  in
+
+  (CHAR char_val, end_state)
+
+let next_token state =
+  let state = skip_comments_and_whitespace state in
+
+  match current_char state with
+  | None -> (EOF, state)
+  | Some c ->
+    (match c with
+    | '+' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (PLUS_ASSIGN, advance_n state 2)
+      | _ -> (PLUS, advance state)
+    end
+    | '-' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (MINUS_ASSIGN, advance_n state 2)
+      | Some '>' -> (ARROW, advance_n state 2)
+      | _ -> (MINUS, advance state)
+    end
+    | '*' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (STAR_ASSIGN, advance_n state 2)
+      | _ -> (STAR, advance state)
+    end
+    | '/' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (SLASH_ASSIGN, advance_n state 2)
+      | _ -> (SLASH, advance state)
+    end
+    | '%' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (PERCENT_ASSIGN, advance_n state 2)
+      | _ -> (PERCENT, advance state)
+    end
+    | '=' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (EQ, advance_n state 2)
+      | _ -> (ASSIGN, advance state)
+    end
+    | '!' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (NE, advance_n state 2)
+      | _ -> (NOT, advance state)
+    end
+    | '<' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (LE, advance_n state 2)
+      | Some '<' -> begin
+        match peek_char state 2 with
+        | Some '=' -> (SHL_ASSIGN, advance_n state 3)
+        | _ -> (SHL, advance_n state 2)
+      end
+      | _ -> (LT, advance state)
+    end
+    | '>' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (GE, advance_n state 2)
+      | Some '>' -> begin
+        match peek_char state 2 with
+        | Some '=' -> (SHR_ASSIGN, advance_n state 3)
+        | _ -> (SHR, advance_n state 2)
+      end
+      | _ -> (GT, advance state)
+    end
+    | '&' -> begin
+      match peek_char state 1 with
+      | Some '&' -> (AND, advance_n state 2)
+      | Some '=' -> (BIT_AND_ASSIGN, advance_n state 2)
+      | _ -> (BIT_AND, advance state)
+    end
+    | '|' -> begin
+      match peek_char state 1 with
+      | Some '|' -> (OR, advance_n state 2)
+      | Some '=' -> (BIT_OR_ASSIGN, advance_n state 2)
+      | _ -> (BIT_OR, advance state)
+    end
+    | '^' -> begin
+      match peek_char state 1 with
+      | Some '=' -> (BIT_XOR_ASSIGN, advance_n state 2)
+      | _ -> (BIT_XOR, advance state)
+    end
+    | ':' -> begin
+      match peek_char state 1 with
+      | Some ':' -> (DOUBLE_COLON, advance_n state 2)
+      | _ -> (COLON, advance state)
+    end
+    | '.' -> begin
+      match peek_char state 1 with
+      | Some '.' -> (DOTDOT, advance_n state 2)
+      | _ -> (DOT, advance state)
+    end
+    | ',' -> (COMMA, advance state)
+    | ';' -> (SEMICOLON, advance state)
+    | '?' -> (QUESTION, advance state)
+    | '(' -> (LPAREN, advance state)
+    | ')' -> (RPAREN, advance state)
+    | '[' -> (LBRACKET, advance state)
+    | ']' -> (RBRACKET, advance state)
+    | '{' -> (LBRACE, advance state)
+    | '}' -> (RBRACE, advance state)
+    | '"' -> read_string state
+    | '\'' -> read_char state
+    | c when is_digit c -> read_number state
+    | c when is_alpha c || c = '_' ->
+      let id, new_state = read_identifier state in
+      let token =
+        if is_keyword id then
+          get_keyword id
+        else
+          IDENTIFIER id
+      in
+      (token, new_state)
+    | _ -> raise (LexError ("Unexpected character: " ^ String.make 1 c)))
+
+let tokenize input =
+  let state = create_lexer input in
+  let tokens = ref [] in
+  let rec loop s =
+    let token, new_state = next_token s in
+    tokens := token :: !tokens ;
+    if token = EOF then
+      List.rev !tokens
+    else
+      loop new_state
+  in
+  loop state
