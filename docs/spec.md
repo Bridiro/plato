@@ -1,4 +1,4 @@
-# Plato Language Extended Specification
+# Plato Language Extended Specification (Fixed)
 
 ## 1. Introduction
 
@@ -11,7 +11,7 @@ Plato is a statically typed, compiled systems programming language with Rust-ins
 ```
 fn, let, mut, if, else, while, for, loop, break, continue, return,
 match, struct, enum, impl, trait, use, mod, pub, const, static,
-true, false, as, type, in, sizeof, null
+true, false, as, type, in, sizeof, null, usize
 ```
 
 ### 2.2 Identifiers
@@ -30,7 +30,10 @@ decimal_literal = digit { digit } [ integer_suffix ] ;
 hex_literal     = '0x' hex_digit { hex_digit } [ integer_suffix ] ;
 octal_literal   = '0o' octal_digit { octal_digit } [ integer_suffix ] ;
 binary_literal  = '0b' binary_digit { binary_digit } [ integer_suffix ] ;
-integer_suffix  = 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64' ;
+integer_suffix  = 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64' | 'usize' ;
+hex_digit       = digit | 'a'...'f' | 'A'...'F' ;
+octal_digit     = '0'...'7' ;
+binary_digit    = '0' | '1' ;
 
 float_literal   = digit { digit } '.' digit { digit } [ float_suffix ] ;
 float_suffix    = 'f32' | 'f64' ;
@@ -39,9 +42,9 @@ string_literal  = '"' { string_char } '"' ;
 string_char     = any_char_except_quote_and_backslash | escape_sequence ;
 escape_sequence = '\' ( 'n' | 't' | 'r' | '\' | '"' | '0' ) ;
 
-char_literal    = ''' ( any_char_except_quote_and_backslash | escape_sequence ) ''' ;
+char_literal    = "'" ( any_char_except_quote_and_backslash | escape_sequence ) "'" ;
 bool_literal    = 'true' | 'false' ;
-unit_literal    = '()' ;
+unit_literal    = '(' ')' ;
 null_literal    = 'null' ;
 ```
 
@@ -54,7 +57,7 @@ Logical:    && || !
 Bitwise:    & | ^ << >> &= |= ^= <<= >>=
 Assignment: =
 Pointer:    * & ->
-Other:      :: . , ; : ? 
+Other:      :: . , ; : ? .. 
 Delimiters: ( ) [ ] { }
 ```
 
@@ -78,36 +81,50 @@ global_var     = [ visibility ] [ 'static' | 'const' ] 'let' [ 'mut' ]
                  identifier [ ':' type ] '=' expression ';' ;
 function       = [ visibility ] 'fn' identifier [ generic_params ] 
                  '(' [ param_list ] ')' [ '->' type ] block ;
-param_list     = param { ',' param } ;
+param_list     = param { ',' param } [ ',' ] ;
 param          = identifier ':' type ;
 
 struct_def     = [ visibility ] 'struct' identifier [ generic_params ] 
                  ( struct_body | ';' ) ;
-struct_body    = '{' { field_def } '}' ;
-field_def      = [ visibility ] identifier ':' type ',' ;
+struct_body    = '{' [ field_list ] '}' ;
+field_list     = field_def { ',' field_def } [ ',' ] ;
+field_def      = [ visibility ] identifier ':' type ;
 
 enum_def       = [ visibility ] 'enum' identifier [ generic_params ] 
-                 '{' enum_variant { ',' enum_variant } '}' ;
-enum_variant   = identifier [ '(' type_list ')' ] ;
+                 '{' [ enum_variant_list ] '}' ;
+enum_variant_list = enum_variant { ',' enum_variant } [ ',' ] ;
+enum_variant   = identifier [ '(' type_list ')' ] [ '=' integer_literal ] ;
 
 trait_def      = [ visibility ] 'trait' identifier [ generic_params ] 
                  '{' { trait_item } '}' ;
 trait_item     = function_signature | associated_type ;
+function_signature = 'fn' identifier [ generic_params ] '(' [ param_list ] ')' [ '->' type ] ';' ;
+associated_type = 'type' identifier [ ':' trait_bounds ] ';' ;
 
 impl_block     = 'impl' [ generic_params ] ( type | trait 'for' type ) 
                  '{' { impl_item } '}' ;
+impl_item      = function | type_alias ;
+
+type_alias     = [ visibility ] 'type' identifier [ generic_params ] '=' type ';' ;
+use_declaration = [ visibility ] 'use' path ';' ;
+mod_declaration = [ visibility ] 'mod' identifier ( ';' | '{' { item } '}' ) ;
 
 (* Types *)
 type           = primitive_type | array_type | pointer_type | function_type | path_type ;
 primitive_type = 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64' 
-               | 'f32' | 'f64' | 'bool' | 'char' | 'str' | 'void' ;
+               | 'f32' | 'f64' | 'bool' | 'char' | 'str' | 'void' | 'usize' ;
 array_type     = '[' type ';' expression ']' ;
 pointer_type   = '*' type ;
 function_type  = 'fn' '(' [ type_list ] ')' [ '->' type ] ;
-path_type      = identifier [ '::' identifier ] [ '<' type_list '>' ] ;
+path_type      = path [ '<' type_list '>' ] ;
+path           = identifier { '::' identifier } ;
+
+type_list      = type { ',' type } [ ',' ] ;
+arg_list       = expression { ',' expression } [ ',' ] ;
 
 (* Generics *)
-generic_params = '<' generic_param { ',' generic_param } '>' ;
+generic_params = '<' generic_param_list '>' ;
+generic_param_list = generic_param { ',' generic_param } [ ',' ] ;
 generic_param  = identifier [ ':' trait_bounds ] ;
 trait_bounds   = trait_bound { '+' trait_bound } ;
 trait_bound    = path_type ;
@@ -117,13 +134,14 @@ block          = '{' { statement } [ expression ] '}' ;
 statement      = let_stmt | assign_stmt | expr_stmt | item ;
 
 let_stmt       = 'let' [ 'mut' ] identifier [ ':' type ] [ '=' expression ] ';' ;
-assign_stmt    = expression assign_op expression ';' ;
+assign_stmt    = lvalue assign_op expression ';' ;
 assign_op      = '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=' ;
 expr_stmt      = expression ';' ;
 
+lvalue         = identifier | '*' lvalue | lvalue '[' expression ']' | lvalue '.' identifier | lvalue '->' identifier ;
+
 (* Expressions *)
-expression     = assignment_expr ;
-assignment_expr = logical_or_expr [ assign_op assignment_expr ] ;
+expression     = logical_or_expr ;
 logical_or_expr = logical_and_expr { '||' logical_and_expr } ;
 logical_and_expr = equality_expr { '&&' equality_expr } ;
 equality_expr  = relational_expr { ('==' | '!=') relational_expr } ;
@@ -145,6 +163,8 @@ primary_expr   = literal | identifier | path_expr
                | return_expr | break_expr | continue_expr
                | '(' expression ')' ;
 
+path_expr      = path ;
+
 (* Control Flow *)
 if_expr        = 'if' expression block [ 'else' ( if_expr | block ) ] ;
 match_expr     = 'match' expression '{' { match_arm } '}' ;
@@ -158,16 +178,21 @@ continue_expr  = 'continue' ;
 
 (* Patterns *)
 pattern        = literal_pattern | identifier_pattern | wildcard_pattern
-               | enum_pattern ;
+               | enum_pattern | tuple_pattern ;
 literal_pattern = literal ;
 identifier_pattern = identifier ;
 wildcard_pattern = '_' ;
-enum_pattern   = path_type [ '(' pattern_list ')' ] ;
+enum_pattern   = path [ '(' pattern_list ')' ] ;
+tuple_pattern  = '(' [ pattern_list ] ')' ;
+pattern_list   = pattern { ',' pattern } [ ',' ] ;
 
 (* Literals and expressions *)
-array_expr     = '[' [ expression { ',' expression } ] ']' ;
-struct_expr    = path_type '{' field_init { ',' field_init } '}' ;
+array_expr     = '[' [ expression_list ] ']' ;
+expression_list = expression { ',' expression } [ ',' ] ;
+struct_expr    = path '{' [ field_init_list ] '}' ;
+field_init_list = field_init { ',' field_init } [ ',' ] ;
 field_init     = identifier ':' expression ;
+block_expr     = block ;
 
 literal        = integer_literal | float_literal | string_literal 
                | char_literal | bool_literal | unit_literal | null_literal ;
@@ -181,7 +206,7 @@ visibility     = 'pub' ;
 
 ```
 Signed integers:   i8, i16, i32, i64
-Unsigned integers: u8, u16, u32, u64  
+Unsigned integers: u8, u16, u32, u64, usize
 Floating point:    f32, f64
 Boolean:           bool
 Character:         char (ASCII)
@@ -196,7 +221,7 @@ Arrays:     [T; N]           (fixed size, stack allocated)
 Pointers:   *T               (raw pointers, no safety)
 Functions:  fn(T1, T2) -> T3
 Structs:    User-defined named types
-Enums:      C-style enums (integer constants)
+Enums:      Sum types with optional data
 ```
 
 ### 4.3 Typing Rules
@@ -209,10 +234,16 @@ Enums:      C-style enums (integer constants)
 #### Literals
 ```
 ————————————————
-Γ ⊢ n: infer_int
+Γ ⊢ n: i32  (default integer)
 
 ————————————————
-Γ ⊢ f: infer_float
+Γ ⊢ n_suffix: suffix_type
+
+————————————————
+Γ ⊢ f: f64  (default float)
+
+————————————————
+Γ ⊢ f_suffix: suffix_type
 
 ————————————————
 Γ ⊢ true: bool
@@ -230,12 +261,12 @@ Enums:      C-style enums (integer constants)
 Γ ⊢ (): void
 
 ————————————————
-Γ ⊢ null: *T (for any T)
+Γ ⊢ null: *T  (for any T)
 ```
 
 #### Variables
 ```
-Γ(x) = τ
+x: τ ∈ Γ
 ————————————————
 Γ ⊢ x: τ
 ```
@@ -250,23 +281,38 @@ Enums:      C-style enums (integer constants)
 ————————————————
 Γ ⊢ *e: τ
 
-Γ ⊢ e: *struct    struct has field f: τ
-————————————————————————————————————————
+Γ ⊢ e: *struct S    field f: τ ∈ S
+————————————————————————————————————
 Γ ⊢ e->f: τ
+
+Γ ⊢ e: struct S    field f: τ ∈ S
+————————————————————————————————————
+Γ ⊢ e.f: τ
+```
+
+#### Arrays
+```
+Γ ⊢ e1: [τ; n]    Γ ⊢ e2: integer_type
+————————————————————————————————————————
+Γ ⊢ e1[e2]: τ
+
+Γ ⊢ e1: *τ    Γ ⊢ e2: integer_type
+————————————————————————————————————
+Γ ⊢ e1[e2]: τ
 ```
 
 #### Binary Operations
 ```
-Γ ⊢ e1: τ    Γ ⊢ e2: τ    τ ∈ {i8, i16, i32, i64, u8, u16, u32, u64}
-————————————————————————————————————————————————————————————————————
+Γ ⊢ e1: τ    Γ ⊢ e2: τ    τ ∈ numeric_types
+————————————————————————————————————————————
 Γ ⊢ e1 + e2: τ
 
 Γ ⊢ e1: *τ    Γ ⊢ e2: integer_type
 ————————————————————————————————————
 Γ ⊢ e1 + e2: *τ
 
-Γ ⊢ e1: τ    Γ ⊢ e2: τ
-————————————————————————
+Γ ⊢ e1: τ    Γ ⊢ e2: τ    τ supports equality
+————————————————————————————————————————————
 Γ ⊢ e1 == e2: bool
 
 Γ ⊢ e1: bool    Γ ⊢ e2: bool
@@ -276,20 +322,9 @@ Enums:      C-style enums (integer constants)
 
 #### Type Casting
 ```
-Γ ⊢ e: τ1
+Γ ⊢ e: τ1    τ1 can_cast_to τ2
 ————————————————————————————————
-Γ ⊢ e as τ2: τ2  (any cast allowed)
-```
-
-#### Array and Indexing
-```
-Γ ⊢ e1: [τ; n]    Γ ⊢ e2: integer_type
-————————————————————————————————————————
-Γ ⊢ e1[e2]: τ
-
-Γ ⊢ e1: *τ    Γ ⊢ e2: integer_type
-————————————————————————————————————
-Γ ⊢ e1[e2]: τ
+Γ ⊢ e as τ2: τ2
 ```
 
 #### Function Types
@@ -303,15 +338,15 @@ Enums:      C-style enums (integer constants)
 Γ ⊢ f(e1, ..., en): τ
 ```
 
-#### Let Bindings with Type Inference
+#### Let Bindings
 ```
-Γ ⊢ e: τ    τ' = infer(τ, annotation)
+Γ ⊢ e: τ
 ———————————————————————————————————————
-Γ ⊢ let x = e: Γ[x ↦ τ']
+Γ ⊢ let x = e: (Γ[x ↦ τ], void)
 
 Γ ⊢ e: τ    τ <: τ'
 ————————————————————————
-Γ ⊢ let x: τ' = e: Γ[x ↦ τ']
+Γ ⊢ let x: τ' = e: (Γ[x ↦ τ'], void)
 ```
 
 #### Control Flow
@@ -324,8 +359,12 @@ Enums:      C-style enums (integer constants)
 ————————————————————————————————————
 Γ ⊢ while cond { body }: void
 
-Γ ⊢ start: τ    Γ ⊢ end: τ    τ is integer_type    Γ, x: τ ⊢ body: void
-——————————————————————————————————————————————————————————————————————————
+Γ ⊢ iter: [τ; n]    Γ, x: τ ⊢ body: void
+———————————————————————————————————————————
+Γ ⊢ for x in iter { body }: void
+
+Γ ⊢ start: τ    Γ ⊢ end: τ    τ ∈ integer_types    Γ, x: τ ⊢ body: void
+————————————————————————————————————————————————————————————————————————
 Γ ⊢ for x in start..end { body }: void
 ```
 
@@ -338,17 +377,25 @@ Enums:      C-style enums (integer constants)
 
 ### 4.4 Type Inference Algorithm
 
-Type inference uses basic unification:
+1. **Constraint Generation**: Walk AST and generate type constraints
+2. **Unification**: Solve constraints using unification algorithm
+3. **Substitution**: Apply unified types back to AST
 
-1. **Constraint Generation**: Generate type constraints from syntax
-2. **Unification**: Solve constraints to find most general type
-3. **Substitution**: Apply solution to get concrete types
+```
+Unify(τ1, τ2):
+  case (τ1, τ2):
+    (T, T) → success
+    (T, _) → [T ↦ τ2] if T is type variable
+    (_, T) → [T ↦ τ1] if T is type variable
+    (F(τ1...τn), F(σ1...σn)) → Unify(τ1, σ1) ∪ ... ∪ Unify(τn, σn)
+    _ → failure
+```
 
 ## 5. Memory Model
 
 ### 5.1 Memory Layout
 
-- **Stack**: Local variables, function parameters
+- **Stack**: Local variables, function parameters, return addresses
 - **Heap**: Dynamic allocations via `malloc`/`free` style functions
 - **Global**: Static and global variables
 - **Code**: Function definitions and constants
@@ -381,67 +428,71 @@ fn realloc(ptr: *void, size: usize) -> *void;
 
 ```
 v ::= n | f | true | false | 'c' | "str" | null | addr
-    | [v1, ..., vn] | {f1: v1, ..., fn: vn} | Variant(n)
+    | [v1, ..., vn] | {f1: v1, ..., fn: vn} | Variant(v1, ..., vn)
 
-Memory ::= { addr ↦ v }
+Store ::= { addr ↦ v }
+Env ::= { x ↦ addr }
 ```
 
 ### 6.2 Evaluation Rules
 
+Configuration: ⟨e, ρ, σ⟩ where e is expression, ρ is environment, σ is store
+
 #### Basic Values
 ```
-—————————————————
-⟨n, M⟩ ⇓ ⟨n, M⟩
+—————————————————————————
+⟨n, ρ, σ⟩ ⇓ ⟨n, ρ, σ⟩
 
-—————————————————
-⟨x, M⟩ ⇓ ⟨M(x), M⟩
+x ∈ dom(ρ)    ρ(x) = addr    σ(addr) = v
+——————————————————————————————————————
+⟨x, ρ, σ⟩ ⇓ ⟨v, ρ, σ⟩
 ```
 
 #### Pointer Operations
 ```
-⟨e, M⟩ ⇓ ⟨addr, M'⟩
-——————————————————————
-⟨*e, M⟩ ⇓ ⟨M'(addr), M'⟩
+⟨e, ρ, σ⟩ ⇓ ⟨addr, ρ, σ'⟩    σ'(addr) = v
+——————————————————————————————————————
+⟨*e, ρ, σ⟩ ⇓ ⟨v, ρ, σ'⟩
 
-⟨e, M⟩ ⇓ ⟨v, M'⟩    addr = alloc(v)
-————————————————————————————————
-⟨&e, M⟩ ⇓ ⟨addr, M'[addr ↦ v]⟩
+⟨e, ρ, σ⟩ ⇓ ⟨v, ρ, σ'⟩    addr = fresh()
+————————————————————————————————————————
+⟨&e, ρ, σ⟩ ⇓ ⟨addr, ρ, σ'[addr ↦ v]⟩
 ```
 
 #### Binary Operations
 ```
-⟨e1, M⟩ ⇓ ⟨v1, M1⟩    ⟨e2, M1⟩ ⇓ ⟨v2, M2⟩    v3 = v1 ⊕ v2
-————————————————————————————————————————————————————————————
-⟨e1 ⊕ e2, M⟩ ⇓ ⟨v3, M2⟩
+⟨e1, ρ, σ⟩ ⇓ ⟨v1, ρ, σ1⟩    ⟨e2, ρ, σ1⟩ ⇓ ⟨v2, ρ, σ2⟩    v3 = v1 ⊕ v2
+————————————————————————————————————————————————————————————————————————
+⟨e1 ⊕ e2, ρ, σ⟩ ⇓ ⟨v3, ρ, σ2⟩
 ```
 
 #### Assignment
 ```
-⟨lval, M⟩ ⇓ ⟨addr, M'⟩    ⟨e, M'⟩ ⇓ ⟨v, M''⟩
-————————————————————————————————————————————————
-⟨lval = e, M⟩ ⇓ ⟨v, M''[addr ↦ v]⟩
+⟨lval, ρ, σ⟩ ⇓ ⟨addr, ρ, σ'⟩    ⟨e, ρ, σ'⟩ ⇓ ⟨v, ρ, σ''⟩
+————————————————————————————————————————————————————————————
+⟨lval = e, ρ, σ⟩ ⇓ ⟨v, ρ, σ''[addr ↦ v]⟩
 ```
 
 #### Control Flow
 ```
-⟨cond, M⟩ ⇓ ⟨true, M'⟩    ⟨e1, M'⟩ ⇓ ⟨v, M''⟩
-————————————————————————————————————————————————
-⟨if cond { e1 } else { e2 }, M⟩ ⇓ ⟨v, M''⟩
+⟨cond, ρ, σ⟩ ⇓ ⟨true, ρ, σ'⟩    ⟨e1, ρ, σ'⟩ ⇓ ⟨v, ρ, σ''⟩
+————————————————————————————————————————————————————————————
+⟨if cond { e1 } else { e2 }, ρ, σ⟩ ⇓ ⟨v, ρ, σ''⟩
 
-⟨cond, M⟩ ⇓ ⟨false, M'⟩    ⟨e2, M'⟩ ⇓ ⟨v, M''⟩
-—————————————————————————————————————————————————
-⟨if cond { e1 } else { e2 }, M⟩ ⇓ ⟨v, M''⟩
+⟨cond, ρ, σ⟩ ⇓ ⟨false, ρ, σ'⟩    ⟨e2, ρ, σ'⟩ ⇓ ⟨v, ρ, σ''⟩
+—————————————————————————————————————————————————————————————
+⟨if cond { e1 } else { e2 }, ρ, σ⟩ ⇓ ⟨v, ρ, σ''⟩
 ```
 
 #### Loops
 ```
-⟨cond, M⟩ ⇓ ⟨false, M'⟩
-————————————————————————————————
-⟨while cond { body }, M⟩ ⇓ ⟨(), M'⟩
+⟨cond, ρ, σ⟩ ⇓ ⟨false, ρ, σ'⟩
+————————————————————————————————————
+⟨while cond { body }, ρ, σ⟩ ⇓ ⟨(), ρ, σ'⟩
 
-⟨cond, M⟩ ⇓ ⟨true, M'⟩    ⟨body, M'⟩ ⇓ ⟨(), M''⟩    ⟨while cond { body }, M''⟩ ⇓ ⟨(), M'''⟩
-————————————————————————————————————————————————————————————————————————————————————————————
-⟨while cond { body }, M⟩ ⇓ ⟨(), M'''⟩
+⟨cond, ρ, σ⟩ ⇓ ⟨true, ρ, σ'⟩    ⟨body, ρ, σ'⟩ ⇓ ⟨(), ρ, σ''⟩    ⟨while cond { body }, ρ, σ''⟩ ⇓ ⟨(), ρ, σ'''⟩
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————
+⟨while cond { body }, ρ, σ⟩ ⇓ ⟨(), ρ, σ'''⟩
 ```
 
 ## 7. Standard Library
@@ -589,9 +640,10 @@ fn main() -> i32 {
 
 ```rust
 enum Color {
-    Red = 0,
-    Green = 1,
-    Blue = 2,
+    Red,
+    Green,
+    Blue,
+    RGB(u8, u8, u8),
 }
 
 fn describe_color(c: Color) -> *char {
@@ -599,7 +651,10 @@ fn describe_color(c: Color) -> *char {
         Color::Red => "Red like fire",
         Color::Green => "Green like grass",
         Color::Blue => "Blue like sky",
-        _ => "Unknown color",
+        Color::RGB(r, g, b) => {
+            printf("RGB(%d, %d, %d)", r, g, b);
+            "Custom color"
+        },
     }
 }
 ```
@@ -612,8 +667,9 @@ fn describe_color(c: Color) -> *char {
 2. **Parsing**: Tokens → AST
 3. **Name Resolution**: Resolve identifiers and paths
 4. **Type Checking**: Verify type correctness and infer types
-5. **Code Generation**: AST → Assembly/Machine Code
-6. **Linking**: Combine object files and libraries
+5. **Monomorphization**: Generate concrete versions of generic functions
+6. **Code Generation**: AST → Assembly/Machine Code
+7. **Linking**: Combine object files and libraries
 
 ### 9.2 Memory Layout
 
@@ -634,3 +690,11 @@ High Memory
 +------------------+
 Low Memory
 ```
+
+### 9.3 ABI Compatibility
+
+Plato uses C-compatible ABI for external function calls:
+- Functions follow platform calling conventions
+- Structs have C-compatible layout
+- Pointers are raw machine addresses
+- No name mangling for `extern "C"` functions
