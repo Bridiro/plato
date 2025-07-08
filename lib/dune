@@ -2,17 +2,11 @@
  (name plato)
  (public_name plato)
  (libraries menhirLib)
- (modules ast tokens lexer parser)
+ (modules ast lexer parser)
  (preprocess (pps ppx_deriving.show)))
 
 (rule
- (targets parser.ml parser.mli)
- (deps parser.mly)
- (action
-  (run menhir --explain parser.mly)))
-
-(rule
- (target tokens.ml)
- (deps parser.mly)
- (action
-  (run menhir --only-tokens parser.mly)))
+  (targets parser.ml parser.mli)
+  (deps parser.mly)
+  (action
+    (run menhir --explain --infer parser.mly)))

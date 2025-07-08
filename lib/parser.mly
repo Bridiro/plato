@@ -7,8 +7,8 @@ open Ast
 %token STRUCT ENUM IMPL TRAIT USE MOD PUB CONST STATIC TRUE FALSE
 %token AS TYPE IN SIZEOF NULL USIZE
 %token <string> IDENTIFIER
-%token <int * integer_suffix option> INTEGER
-%token <float * float_suffix option> FLOAT
+%token <int * Ast.integer_suffix option> INTEGER
+%token <float * Ast.float_suffix option> FLOAT
 %token <string> STRING
 %token <char> CHAR
 %token PLUS MINUS STAR SLASH PERCENT
@@ -199,7 +199,7 @@ variant_data:
 | LPAREN types = separated_list(COMMA, plato_type) RPAREN { types }
 
 variant_value:
-| ASSIGN i = INTEGER { let (val, _) = i in val }
+| ASSIGN i = INTEGER { let (value, _) = i in value }
 
 (* Parameter *)
 param:
@@ -241,16 +241,15 @@ plato_type:
   { FunctionType (params, return_type) }
 | path = path generics = type_generics?
   { PathType (path, generics) }
-| name = IDENTIFIER { GenericType name }
 
 primitive_type:
-| IDENTIFIER {
-  match $1 with
+| name = IDENTIFIER {
+  match name with
   | "i8" -> I8 | "i16" -> I16 | "i32" -> I32 | "i64" -> I64
   | "u8" -> U8 | "u16" -> U16 | "u32" -> U32 | "u64" -> U64
   | "usize" -> Usize | "f32" -> F32 | "f64" -> F64
   | "bool" -> Bool | "char" -> Char | "str" -> Str | "void" -> Void
-  | _ -> failwith ("Unknown primitive type: " ^ $1)
+  | _ -> failwith ("Unknown primitive type: " ^ name)
 }
 
 type_generics:
@@ -258,14 +257,14 @@ type_generics:
 
 (* Path *)
 path:
-| segments = separated_nonempty_list(DOUBLE_COLON, IDENTIFIER) { segments }
+| id = IDENTIFIER { [id] }
+| path = path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
 
 (* Expressions *)
 expression:
 | lit = literal { Literal lit }
 | id = IDENTIFIER { Identifier id }
-| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
-| op = unary_op e = expression { UnaryOp (op, e) }
+| op = unary_op e = expression %prec NOT { UnaryOp (op, e) }
 | e = expression AS ty = plato_type { Cast (e, ty) }
 | e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
 | e = expression DOT field = IDENTIFIER { FieldAccess (e, field) }
@@ -289,6 +288,7 @@ expression:
 | BREAK expr = expression? { Break expr }
 | CONTINUE { Continue }
 | LPAREN e = expression RPAREN { e }
+| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
 
 else_clause:
 | ELSE block = block { block }
@@ -360,7 +360,6 @@ match_arm:
 pattern:
 | lit = literal { LiteralPattern lit }
 | id = IDENTIFIER { IdentifierPattern id }
-| IDENTIFIER { WildcardPattern }
 | path = path LPAREN patterns = separated_list(COMMA, pattern) RPAREN
   { EnumPattern (path, Some patterns) }
 | path = path { EnumPattern (path, None) }

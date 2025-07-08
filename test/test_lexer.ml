@@ -12,10 +12,7 @@ let test_input =
 |}
 in
 try
-  let tokens = Plato.Lexer.tokenize test_input in
-  List.iter
-    (fun x -> Printf.printf "%s\n" (Plato.Tokens.string_of_token x))
-    tokens;
+  let _ = Plato.Lexer.tokenize test_input in
   flush_all ()
 with
 | e -> 
