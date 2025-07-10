@@ -1,12 +1,12 @@
-let test_simple_parse () =
-  let input = "fn main() { 42 }" in
-  Printf.printf "Testing simple function parse (no return type):\n";
+let test_parse input expected_desc =
+  Printf.printf "Testing %s:\n" expected_desc;
   try
     let tokens = Plato.Lexer.tokenize input in
-    Printf.printf "Tokens: ";
+    Printf.printf "  Tokens: ";
     List.iter (fun token ->
       match token with
       | Plato.Parser.FN -> Printf.printf "FN "
+      | Plato.Parser.STRUCT -> Printf.printf "STRUCT "
       | Plato.Parser.IDENTIFIER s -> Printf.printf "ID(%s) " s
       | Plato.Parser.LPAREN -> Printf.printf "( "
       | Plato.Parser.RPAREN -> Printf.printf ") "
@@ -21,13 +21,14 @@ let test_simple_parse () =
     
     let (lexer_fn, lexbuf) = Plato.Lexer.parse_string input in
     let ast = Plato.Parser.program lexer_fn lexbuf in
-    Printf.printf "✓ Parsed successfully: %d items\n" (List.length ast);
+    Printf.printf "  ✓ Parsed successfully: %d items\n" (List.length ast);
   with
   | Plato.Lexer.LexError msg ->
-      Printf.printf "✗ Lexer error: %s\n" msg
+      Printf.printf "  ✗ Lexer error: %s\n" msg
   | Plato.Parser.Error ->
-      Printf.printf "✗ Parser error\n"
+      Printf.printf "  ✗ Parser error\n"
   | e ->
-      Printf.printf "✗ Other error: %s\n" (Printexc.to_string e)
+      Printf.printf "  ✗ Other error: %s\n" (Printexc.to_string e)
 
-let () = test_simple_parse ()
+let () =
+  test_parse "fn main() { let x = 42; }" "function with let statement"

@@ -5,6 +5,12 @@ fn main() -> i32 {
 }
 |}
 
+let test_simple_function_no_ret = {|
+fn main() {
+  let x = 42;
+}
+|}
+
 let test_complex_function = {|
 fn factorial(n: i32) -> i32 {
   if n <= 1 {
@@ -52,6 +58,7 @@ let parse_test name input =
 let () =
   Printf.printf "=== Plato Parser Tests ===\n\n";
   parse_test "Simple function" test_simple_function;
+  parse_test "Simple function (no return)" test_simple_function_no_ret;
   parse_test "Complex function" test_complex_function;
   parse_test "Struct definition" test_struct;
   parse_test "Enum definition" test_enum;
