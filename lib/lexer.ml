@@ -1,93 +1,9 @@
 open Ast
+open Parser
 
 exception LexError of string
 
-type token =
-  (* Keywords *)
-  | FN
-  | LET
-  | MUT
-  | IF
-  | ELSE
-  | WHILE
-  | FOR
-  | LOOP
-  | BREAK
-  | CONTINUE
-  | RETURN
-  | MATCH
-  | STRUCT
-  | ENUM
-  | IMPL
-  | TRAIT
-  | USE
-  | MOD
-  | PUB
-  | CONST
-  | STATIC
-  | TRUE
-  | FALSE
-  | AS
-  | TYPE
-  | IN
-  | SIZEOF
-  | NULL
-  | USIZE
-  (* Identifiers and literals *)
-  | IDENTIFIER of string
-  | INTEGER of int * integer_suffix option
-  | FLOAT of float * float_suffix option
-  | STRING of string
-  | CHAR of char
-  (* Operators *)
-  | PLUS
-  | MINUS
-  | STAR
-  | SLASH
-  | PERCENT
-  | PLUS_ASSIGN
-  | MINUS_ASSIGN
-  | STAR_ASSIGN
-  | SLASH_ASSIGN
-  | PERCENT_ASSIGN
-  | EQ
-  | NE
-  | LT
-  | GT
-  | LE
-  | GE
-  | AND
-  | OR
-  | NOT
-  | BIT_AND
-  | BIT_OR
-  | BIT_XOR
-  | SHL
-  | SHR
-  | BIT_AND_ASSIGN
-  | BIT_OR_ASSIGN
-  | BIT_XOR_ASSIGN
-  | SHL_ASSIGN
-  | SHR_ASSIGN
-  | ASSIGN
-  | ARROW
-  | DOT
-  | COMMA
-  | SEMICOLON
-  | COLON
-  | QUESTION
-  | DOTDOT
-  | DOUBLE_COLON
-  (* Delimiters *)
-  | LPAREN
-  | RPAREN
-  | LBRACKET
-  | RBRACKET
-  | LBRACE
-  | RBRACE
-  (* Special *)
-  | EOF
-
+(* Use the parser's token type *)
 let keywords =
   [
     ("fn", FN);
@@ -125,6 +41,8 @@ let keyword_table = Hashtbl.create 32
 let () = List.iter (fun (k, v) -> Hashtbl.add keyword_table k v) keywords
 let is_keyword s = Hashtbl.mem keyword_table s
 let get_keyword s = Hashtbl.find keyword_table s
+
+(* Use the parser's token type *)
 let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 let is_digit c = c >= '0' && c <= '9'
 
@@ -510,3 +428,17 @@ let tokenize input =
       loop new_state
   in
   loop state
+
+(* Menhir bridge - convert our lexer to work with Menhir's expectations *)
+let create_menhir_lexer input =
+  let state = ref (create_lexer input) in
+  fun _lexbuf ->
+    let (token, new_state) = next_token !state in
+    state := new_state;
+    token
+
+(* Helper function to parse a string directly *)
+let parse_string input =
+  let lexbuf = Lexing.from_string input in
+  let lexer_fn = create_menhir_lexer input in
+  (lexer_fn, lexbuf)

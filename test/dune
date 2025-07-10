@@ -7,3 +7,8 @@
  (name test_parser)
  (modules test_parser)
  (libraries plato))
+
+(executable
+ (name debug_parser)
+ (modules debug_parser)
+ (libraries plato))

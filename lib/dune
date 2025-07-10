@@ -5,8 +5,6 @@
  (modules ast lexer parser)
  (preprocess (pps ppx_deriving.show)))
 
-(rule
-  (targets parser.ml parser.mli)
-  (deps parser.mly)
-  (action
-    (run menhir --explain --infer parser.mly)))
+(menhir
+ (modules parser)
+ (flags --explain))
