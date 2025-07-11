@@ -6,10 +6,15 @@ fn mul(x: int, y: int) -> int {
     r
 }
 
+fn add(x: int, y: int) -> int {
+    x + y
+}
+
 fn main() -> int {
-    if b {
-        return mul(a, 2);
+    let result = mul(a, 2);
+    if true {
+        return add(result, 1);
     } else {
-        a
+        result
     }
 }

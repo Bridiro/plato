@@ -72,3 +72,48 @@
  (name debug_semicolon)
  (modules debug_semicolon)
  (libraries plato))
+
+(executable
+ (name debug_step_by_step)
+ (modules debug_step_by_step)
+ (libraries plato))
+
+(executable
+ (name debug_functions)
+ (modules debug_functions)
+ (libraries plato))
+
+(executable
+ (name debug_if_issue)
+ (modules debug_if_issue)
+ (libraries plato))
+
+(executable
+ (name debug_identifier_issue)
+ (modules debug_identifier_issue)
+ (libraries plato))
+
+(executable
+ (name debug_minimal_if)
+ (modules debug_minimal_if)
+ (libraries plato))
+
+(executable
+ (name debug_various_identifiers)
+ (modules debug_various_identifiers)
+ (libraries plato))
+
+(executable
+ (name test_features)
+ (modules test_features)
+ (libraries plato))
+
+(executable
+ (name test_for_loop)
+ (modules test_for_loop)
+ (libraries plato))
+
+(executable
+ (name debug_conditional_grammar)
+ (modules debug_conditional_grammar)
+ (libraries plato))

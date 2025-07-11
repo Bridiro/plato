@@ -35,6 +35,7 @@ open Ast
 %left DOT
 %left LBRACKET
 %left LPAREN
+%right IF WHILE FOR
 
 (* Start symbol *)
 %start program
@@ -290,13 +291,13 @@ expression:
   { ArrayExpr exprs }
 | path = path LBRACE fields = separated_list(COMMA, struct_field) RBRACE
   { StructExpr (path, fields) }
-| IF cond = expression then_block = block else_block = else_clause?
+| IF cond = condition_expr then_block = block else_block = else_clause? %prec IF
   { If (cond, then_block, else_block) }
 | MATCH expr = expression LBRACE arms = match_arm+ RBRACE
   { Match (expr, arms) }
 | LOOP body = block { Loop body }
-| WHILE cond = expression body = block { While (cond, body) }
-| FOR var = IDENTIFIER IN iter = expression body = block
+| WHILE cond = condition_expr body = block %prec WHILE { While (cond, body) }
+| FOR var = IDENTIFIER IN iter = condition_expr body = block %prec FOR
   { For (var, iter, body) }
 | RETURN expr = expression? { Return expr }
 | BREAK expr = expression? { Break expr }
@@ -409,5 +410,19 @@ block_inner:
 | stmt = statement { ([stmt], None) }
 | stmt = statement inner = block_inner { let (stmts, expr) = inner in (stmt::stmts, expr) }
 | expr = expression { ([], Some expr) }
+
+(* Condition expressions - handles identifiers explicitly to avoid conflicts *)
+condition_expr:
+| lit = literal { Literal lit }
+| id = IDENTIFIER { Identifier id }
+| LPAREN e = expression RPAREN { e }
+| e1 = condition_expr op = binary_op e2 = condition_expr { BinaryOp (e1, op, e2) }
+| op = unary_op e = condition_expr { UnaryOp (op, e) }
+| func = condition_expr LPAREN args = separated_list(COMMA, expression) RPAREN
+  { FunctionCall (func, args) }
+| e = condition_expr DOT field = IDENTIFIER { FieldAccess (e, field) }
+| e1 = condition_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
+| LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
+  { ArrayExpr exprs }
 
 %%
