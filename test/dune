@@ -12,3 +12,63 @@
  (name debug_parser)
  (modules debug_parser)
  (libraries plato))
+
+(executable
+ (name debug_detailed)
+ (modules debug_detailed)
+ (libraries plato))
+
+(executable
+ (name debug_minimal)
+ (modules debug_minimal)
+ (libraries plato))
+
+(executable
+ (name debug_return)
+ (modules debug_return)
+ (libraries plato))
+
+(executable
+ (name debug_block)
+ (modules debug_block)
+ (libraries plato))
+
+(executable
+ (name test_file)
+ (modules test_file)
+ (libraries plato))
+
+(executable
+ (name debug_features)
+ (modules debug_features)
+ (libraries plato))
+
+(executable
+ (name debug_expressions)
+ (modules debug_expressions)
+ (libraries plato))
+
+(executable
+ (name debug_incremental)
+ (modules debug_incremental)
+ (libraries plato))
+
+(executable
+ (name debug_main)
+ (modules debug_main)
+ (libraries plato))
+
+(executable
+ (name debug_if)
+ (modules debug_if)
+ (libraries plato))
+
+(executable
+ (name debug_exact)
+ (modules debug_exact)
+ (libraries plato))
+
+(executable
+ (name debug_semicolon)
+ (modules debug_semicolon)
+ (libraries plato))

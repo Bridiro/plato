@@ -57,6 +57,7 @@ item:
 | type_alias = type_alias { type_alias }
 | use_decl = use_decl { use_decl }
 | mod_decl = mod_decl { mod_decl }
+| global_let = global_let { global_let }
 
 (* Function definition *)
 function_def:
@@ -130,6 +131,14 @@ global_var:
   type_ann = type_annotation? ASSIGN expr = expression SEMICOLON
   {
     GlobalVar (vis, is_const, (is_mut <> None), name, type_ann, expr)
+  }
+
+(* Global let (simplified global variable without static/const) *)
+global_let:
+| vis = visibility LET is_mut = MUT? name = IDENTIFIER 
+  type_ann = type_annotation? ASSIGN expr = expression SEMICOLON
+  {
+    GlobalVar (vis, false, (is_mut <> None), name, type_ann, expr)
   }
 
 (* Type alias *)
@@ -249,6 +258,7 @@ primitive_type:
   | "u8" -> U8 | "u16" -> U16 | "u32" -> U32 | "u64" -> U64
   | "usize" -> Usize | "f32" -> F32 | "f64" -> F64
   | "bool" -> Bool | "char" -> Char | "str" -> Str | "void" -> Void
+  | "int" -> I32  (* Add int as alias for i32 *)
   | _ -> failwith ("Unknown primitive type: " ^ name)
 }
 
@@ -260,10 +270,15 @@ path:
 | id = IDENTIFIER { [id] }
 | path = path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
 
-(* Expressions *)
-expression:
+(* Expressions - simplified version *)
+simple_expression:
 | lit = literal { Literal lit }
 | id = IDENTIFIER { Identifier id }
+| LPAREN e = expression RPAREN { e }
+
+expression:
+| e = simple_expression { e }
+| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
 | op = unary_op e = expression %prec NOT { UnaryOp (op, e) }
 | e = expression AS ty = plato_type { Cast (e, ty) }
 | e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
@@ -275,7 +290,6 @@ expression:
   { ArrayExpr exprs }
 | path = path LBRACE fields = separated_list(COMMA, struct_field) RBRACE
   { StructExpr (path, fields) }
-| block = block { Block block }
 | IF cond = expression then_block = block else_block = else_clause?
   { If (cond, then_block, else_block) }
 | MATCH expr = expression LBRACE arms = match_arm+ RBRACE
@@ -287,8 +301,6 @@ expression:
 | RETURN expr = expression? { Return expr }
 | BREAK expr = expression? { Break expr }
 | CONTINUE { Continue }
-| LPAREN e = expression RPAREN { e }
-| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
 
 else_clause:
 | ELSE block = block { block }
@@ -388,8 +400,14 @@ lvalue:
 | lval = lvalue DOT field = IDENTIFIER { LvalueField (lval, field) }
 | lval = lvalue ARROW field = IDENTIFIER { LvaluePointer (lval, field) }
 
-(* Blocks *)
+(* Blocks - restructured to avoid ambiguity *)
 block:
-| LBRACE stmts = statement* expr = expression? RBRACE { (stmts, expr) }
+| LBRACE RBRACE { ([], None) }
+| LBRACE inner = block_inner RBRACE { inner }
+
+block_inner:
+| stmt = statement { ([stmt], None) }
+| stmt = statement inner = block_inner { let (stmts, expr) = inner in (stmt::stmts, expr) }
+| expr = expression { ([], Some expr) }
 
 %%
