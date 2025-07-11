@@ -69,11 +69,6 @@
  (libraries plato))
 
 (executable
- (name debug_semicolon)
- (modules debug_semicolon)
- (libraries plato))
-
-(executable
  (name debug_step_by_step)
  (modules debug_step_by_step)
  (libraries plato))
