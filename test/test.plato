@@ -1,15 +1,18 @@
 let a: int = 3;
 let b: bool = true;
 
+struct Point {
+    x: i32,
+    y: i32
+}
+
 fn mul(x: int, y: int) -> int {
-    let r = x * y;
-    r
+    x * y;
 }
 
 fn main() -> int {
     if b {
         return mul(a, 2);
-    } else {
-        a
     }
+    a
 }

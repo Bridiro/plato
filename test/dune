@@ -117,3 +117,13 @@
  (name debug_conditional_grammar)
  (modules debug_conditional_grammar)
  (libraries plato))
+
+(executable
+ (name debug_return_issue)
+ (modules debug_return_issue)
+ (libraries plato))
+
+(executable
+ (name test_rust_style_if)
+ (modules test_rust_style_if)
+ (libraries plato))

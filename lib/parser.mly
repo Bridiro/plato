@@ -291,8 +291,8 @@ expression:
   { ArrayExpr exprs }
 | path = path LBRACE fields = separated_list(COMMA, struct_field) RBRACE
   { StructExpr (path, fields) }
-| IF cond = condition_expr then_block = block else_block = else_clause? %prec IF
-  { If (cond, then_block, else_block) }
+| IF cond = condition_expr then_block = block ELSE else_block = block %prec IF
+  { If (cond, then_block, Some else_block) }
 | MATCH expr = expression LBRACE arms = match_arm+ RBRACE
   { Match (expr, arms) }
 | LOOP body = block { Loop body }
@@ -410,6 +410,13 @@ block_inner:
 | stmt = statement { ([stmt], None) }
 | stmt = statement inner = block_inner { let (stmts, expr) = inner in (stmt::stmts, expr) }
 | expr = expression { ([], Some expr) }
+| if_stmt = if_statement inner = block_inner { let (stmts, expr) = inner in (if_stmt::stmts, expr) }
+| if_stmt = if_statement { ([if_stmt], None) }
+
+(* IF statements without else clause - treated as statements *)
+if_statement:
+| IF cond = condition_expr then_block = block
+  { ExprStmt (If (cond, then_block, None)) }
 
 (* Condition expressions - handles identifiers explicitly to avoid conflicts *)
 condition_expr:
