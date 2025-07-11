@@ -4,6 +4,9 @@
 /_dune/
 /.dune/
 
+# Menhir dumps
+*.conflicts
+
 # Opam local switch (if you use `opam switch create .`)
 /.opam-switch/
 
