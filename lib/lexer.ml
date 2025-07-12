@@ -1,6 +1,10 @@
 open Ast
 open Parser
 
+(* Enhanced exception for lexer errors with position *)
+exception LexErrorWithPos of string * int * int
+
+(* Legacy exception for backward compatibility *)
 exception LexError of string
 
 (* Use the parser's token type *)
@@ -84,7 +88,7 @@ let parse_escape_char c =
   | '"' -> '"'
   | '\'' -> '\''
   | '0' -> '\000'
-  | _ -> raise (LexError ("Invalid escape sequence: \\" ^ String.make 1 c))
+  | _ -> failwith ("Invalid escape sequence: \\" ^ String.make 1 c)
 
 type lexer_state = {
   input : string;
@@ -92,10 +96,15 @@ type lexer_state = {
   line : int;
   column : int;
   length : int;
+  filename : string option;
 }
 
-let create_lexer input =
-  { input; pos = 0; line = 1; column = 1; length = String.length input }
+let create_lexer ?(filename=None) input =
+  { input; pos = 0; line = 1; column = 1; length = String.length input; filename }
+
+(* Position-aware error functions *)
+let lex_error_simple state message =
+  raise (LexErrorWithPos (message, state.line, state.column))
 
 let current_char state =
   if state.pos >= state.length then
@@ -150,7 +159,7 @@ let rec skip_block_comment state depth =
     else
       skip_block_comment new_state (depth - 1)
   | Some _, _ -> skip_block_comment (advance state) depth
-  | None, _ -> raise (LexError "Unterminated block comment")
+  | None, _ -> lex_error_simple state "Unterminated block comment"
 
 let rec skip_comments_and_whitespace state =
   let state = skip_whitespace state in
@@ -270,12 +279,12 @@ let read_string state =
         let escaped = parse_escape_char c in
         Buffer.add_char buffer escaped ;
         loop (advance_n s 2)
-      | None -> raise (LexError "Unterminated string literal")
+      | None -> lex_error_simple s "Unterminated string literal"
     end
     | Some c ->
       Buffer.add_char buffer c ;
       loop (advance s)
-    | None -> raise (LexError "Unterminated string literal")
+    | None -> lex_error_simple s "Unterminated string literal"
   in
 
   let end_state = loop start_state in
@@ -291,16 +300,16 @@ let read_char state =
     | Some '\\' -> begin
       match peek_char start_state 1 with
       | Some c -> (parse_escape_char c, advance_n start_state 2)
-      | None -> raise (LexError "Unterminated character literal")
+      | None -> lex_error_simple start_state "Unterminated character literal"
     end
     | Some c -> (c, advance start_state)
-    | None -> raise (LexError "Unterminated character literal")
+    | None -> lex_error_simple start_state "Unterminated character literal"
   in
 
   let end_state =
     match current_char after_char with
     | Some '\'' -> advance after_char
-    | _ -> raise (LexError "Unterminated character literal")
+    | _ -> lex_error_simple after_char "Unterminated character literal"
   in
 
   (CHAR char_val, end_state)
@@ -417,7 +426,7 @@ let next_token state =
           IDENTIFIER id
       in
       (token, new_state)
-    | _ -> raise (LexError ("Unexpected character: " ^ String.make 1 c)))
+    | _ -> lex_error_simple state ("Unexpected character: " ^ String.make 1 c))
 
 let tokenize input =
   let state = create_lexer input in
@@ -432,13 +441,22 @@ let tokenize input =
   in
   loop state
 
+(* Global variable to track last token position for error reporting *)
+let last_token_position = ref (1, 1, 0) (* line, column, pos *)
+
 (* Menhir bridge - convert our lexer to work with Menhir's expectations *)
 let create_menhir_lexer input =
   let state = ref (create_lexer input) in
   fun _lexbuf ->
+    let old_state = !state in
     let (token, new_state) = next_token !state in
+    (* Update global position for error reporting *)
+    last_token_position := (old_state.line, old_state.column, old_state.pos);
     state := new_state;
     token
+
+(* Function to get last token position for error reporting *)
+let get_last_token_position () = !last_token_position
 
 (* Helper function to parse a string directly *)
 let parse_string input =

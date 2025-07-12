@@ -2,7 +2,7 @@
  (name plato)
  (public_name plato)
  (libraries menhirLib)
- (modules ast lexer parser)
+ (modules ast error lexer parser)
  (preprocess (pps ppx_deriving.show)))
 
 (menhir
