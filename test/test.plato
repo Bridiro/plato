@@ -1,9 +1,21 @@
 let a: int = 3;
 let b: bool = true;
 
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
 struct Point {
     x: i32,
     y: i32,
+}
+
+impl Point {
+    fn new(x: i32, y: i32) -> Point {
+        Point { x, y }
+    }
 }
 
 fn mul(x: int, y: int) -> int {
@@ -11,6 +23,7 @@ fn mul(x: int, y: int) -> int {
 }
 
 fn main() -> int {
+    let f = Color::Red;
     if b {
         return mul(a, 2);
     }

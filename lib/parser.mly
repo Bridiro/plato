@@ -275,7 +275,11 @@ path:
 (* Expressions - simplified version *)
 simple_expression:
 | lit = literal { Literal lit }
-| id = IDENTIFIER { Identifier id }
+| path = path { 
+    match path with
+    | [id] -> Identifier id
+    | _ -> PathExpr path
+  }
 | LPAREN e = expression RPAREN { e }
 
 expression:

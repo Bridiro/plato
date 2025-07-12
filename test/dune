@@ -4,138 +4,8 @@
  (libraries plato))
 
 (executable
- (name test_fat_arrow)
- (modules test_fat_arrow)
- (libraries plato))
-
-(executable
- (name test_match_token)
- (modules test_match_token)
- (libraries plato))
-
-(executable
- (name test_match_complete)
- (modules test_match_complete)
- (libraries plato))
-
-(executable
- (name test_simple_match)
- (modules test_simple_match)
- (libraries plato))
-
-(executable
- (name test_block_match)
- (modules test_block_match)
- (libraries plato))
-
-(executable
- (name test_match_statements)
- (modules test_match_statements)
- (libraries plato))
-
-(executable
- (name test_match_tokens)
- (modules test_match_tokens)
- (libraries plato))
-
-(executable
- (name test_trailing_commas)
- (modules test_trailing_commas)
- (libraries plato))
-
-(executable
  (name test_parser)
  (modules test_parser)
- (libraries plato))
-
-(executable
- (name debug_parser)
- (modules debug_parser)
- (libraries plato))
-
-(executable
- (name debug_detailed)
- (modules debug_detailed)
- (libraries plato))
-
-(executable
- (name debug_minimal)
- (modules debug_minimal)
- (libraries plato))
-
-(executable
- (name debug_return)
- (modules debug_return)
- (libraries plato))
-
-(executable
- (name debug_block)
- (modules debug_block)
- (libraries plato))
-
-(executable
- (name test_file)
- (modules test_file)
- (libraries plato))
-
-(executable
- (name debug_features)
- (modules debug_features)
- (libraries plato))
-
-(executable
- (name debug_expressions)
- (modules debug_expressions)
- (libraries plato))
-
-(executable
- (name debug_incremental)
- (modules debug_incremental)
- (libraries plato))
-
-(executable
- (name debug_main)
- (modules debug_main)
- (libraries plato))
-
-(executable
- (name debug_if)
- (modules debug_if)
- (libraries plato))
-
-(executable
- (name debug_exact)
- (modules debug_exact)
- (libraries plato))
-
-(executable
- (name debug_step_by_step)
- (modules debug_step_by_step)
- (libraries plato))
-
-(executable
- (name debug_functions)
- (modules debug_functions)
- (libraries plato))
-
-(executable
- (name debug_if_issue)
- (modules debug_if_issue)
- (libraries plato))
-
-(executable
- (name debug_identifier_issue)
- (modules debug_identifier_issue)
- (libraries plato))
-
-(executable
- (name debug_minimal_if)
- (modules debug_minimal_if)
- (libraries plato))
-
-(executable
- (name debug_various_identifiers)
- (modules debug_various_identifiers)
  (libraries plato))
 
 (executable
@@ -144,51 +14,16 @@
  (libraries plato))
 
 (executable
- (name test_for_loop)
- (modules test_for_loop)
- (libraries plato))
-
-(executable
- (name debug_conditional_grammar)
- (modules debug_conditional_grammar)
- (libraries plato))
-
-(executable
- (name debug_return_issue)
- (modules debug_return_issue)
- (libraries plato))
-
-(executable
- (name test_rust_style_if)
- (modules test_rust_style_if)
- (libraries plato))
-
-(executable
  (name test_comprehensive)
  (modules test_comprehensive)
  (libraries plato))
 
 (executable
- (name test_path_expr)
- (modules test_path_expr)
+ (name test_integration)
+ (modules test_integration)
  (libraries plato))
 
 (executable
- (name test_match)
- (modules test_match)
- (libraries plato))
-
-(executable
- (name test_match_fixed)
- (modules test_match_fixed)
- (libraries plato))
-
-(executable
- (name test_impl)
- (modules test_impl)
- (libraries plato))
-
-(executable
- (name test_type_parsing)
- (modules test_type_parsing)
+ (name run_all_tests)
+ (modules run_all_tests)
  (libraries plato))
