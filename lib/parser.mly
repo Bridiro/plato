@@ -257,7 +257,6 @@ plato_type:
       | "u8" -> PrimType U8 | "u16" -> PrimType U16 | "u32" -> PrimType U32 | "u64" -> PrimType U64
       | "usize" -> PrimType Usize | "f32" -> PrimType F32 | "f64" -> PrimType F64
       | "bool" -> PrimType Bool | "char" -> PrimType Char | "str" -> PrimType Str | "void" -> PrimType Void
-      | "int" -> PrimType I32  (* Add int as alias for i32 *)
       | _ -> PathType (path, generics)
     )
     | _ -> PathType (path, generics)

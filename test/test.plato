@@ -1,4 +1,4 @@
-let a: int = 3;
+let a: i32 = 3;
 let b: bool = true;
 
 enum Color {
@@ -18,12 +18,12 @@ impl Point {
     }
 }
 
-fn mul(x: int, y: int) -> int {
+fn mul(x: i32, y: i32) -> i32 {
     x * y
 }
 
-fn main() -> int {
-    let f = Color::Red;
+fn main() -> i32 {
+    let color = Color::Red;
     if b {
         return mul(a, 2);
     }
