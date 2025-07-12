@@ -33,6 +33,7 @@ let keywords =
     ("type", TYPE);
     ("in", IN);
     ("sizeof", SIZEOF);
+    ("_", UNDERSCORE);
     ("null", NULL);
     ("self", SELF);
     ("usize", USIZE);

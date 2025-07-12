@@ -4,6 +4,41 @@
  (libraries plato))
 
 (executable
+ (name test_fat_arrow)
+ (modules test_fat_arrow)
+ (libraries plato))
+
+(executable
+ (name test_match_token)
+ (modules test_match_token)
+ (libraries plato))
+
+(executable
+ (name test_match_complete)
+ (modules test_match_complete)
+ (libraries plato))
+
+(executable
+ (name test_simple_match)
+ (modules test_simple_match)
+ (libraries plato))
+
+(executable
+ (name test_block_match)
+ (modules test_block_match)
+ (libraries plato))
+
+(executable
+ (name test_match_statements)
+ (modules test_match_statements)
+ (libraries plato))
+
+(executable
+ (name test_match_tokens)
+ (modules test_match_tokens)
+ (libraries plato))
+
+(executable
  (name test_parser)
  (modules test_parser)
  (libraries plato))

@@ -280,7 +280,6 @@ simple_expression:
 
 expression:
 | e = simple_expression { e }
-| path = path { match path with [id] -> Identifier id | _ -> PathExpr path }
 | e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
 | op = unary_op e = expression %prec NOT { UnaryOp (op, e) }
 | e = expression AS ty = plato_type { Cast (e, ty) }
@@ -374,10 +373,11 @@ match_arm:
 (* Patterns *)
 pattern:
 | lit = literal { LiteralPattern lit }
-| id = IDENTIFIER { if id = "_" then WildcardPattern else IdentifierPattern id }
-| path = path LPAREN patterns = separated_list(COMMA, pattern) RPAREN
-  { EnumPattern (path, Some patterns) }
-| path = path { EnumPattern (path, None) }
+| UNDERSCORE { WildcardPattern }
+| id = IDENTIFIER { IdentifierPattern id }
+| id = IDENTIFIER DOUBLE_COLON rest = path LPAREN patterns = separated_list(COMMA, pattern) RPAREN
+  { EnumPattern (id :: rest, Some patterns) }
+| id = IDENTIFIER DOUBLE_COLON rest = path { EnumPattern (id :: rest, None) }
 | LPAREN patterns = separated_list(COMMA, pattern) RPAREN
   { TuplePattern patterns }
 
