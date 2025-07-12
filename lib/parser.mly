@@ -280,12 +280,14 @@ path:
 (* Expressions - simplified version *)
 simple_expression:
 | lit = literal { Literal lit }
-| path = path { 
-    match path with
-    | [id] -> Identifier id
-    | _ -> PathExpr path
-  }
+| id = IDENTIFIER { Identifier id }
+| path = multi_part_path { PathExpr path }
 | LPAREN e = expression RPAREN { e }
+
+(* Multi-part paths (at least one ::) *)
+multi_part_path:
+| id1 = IDENTIFIER DOUBLE_COLON id2 = IDENTIFIER { [id1; id2] }
+| path = multi_part_path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
 
 expression:
 | e = simple_expression { e }
@@ -303,7 +305,7 @@ expression:
   { StructExpr (path, fields) }
 | IF cond = condition_expr then_block = block ELSE else_block = block %prec IF
   { If (cond, then_block, Some else_block) }
-| MATCH expr = expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
+| MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE %prec MATCH
   { Match (expr, arms) }
 | LOOP body = block { Loop body }
 | WHILE cond = condition_expr body = block %prec WHILE { While (cond, body) }
