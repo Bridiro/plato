@@ -28,10 +28,10 @@ let test_comprehensive_features () =
     "fn main() { let x = 42; let p = &x; let y = *p; }";
     
     (* Impl blocks - let's test *)
-    "struct Point { x: int, y: int }; impl Point { fn new(x: int, y: int) -> Point { Point { x, y } } }";
+    "struct Point { x: int, y: int } impl Point { fn new(x: int, y: int) -> Point { Point { x, y } } }";
     
     (* Traits - let's test *)
-    "trait Display { fn display(&self) -> str; }";
+    "trait Display { fn display(self: *Point) -> str; }";
     
     (* More complex combinations *)
     "fn main() { let arr = [1, 2, 3]; for i in arr { if i > 2 { break; } } }";

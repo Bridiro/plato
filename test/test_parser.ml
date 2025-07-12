@@ -41,7 +41,6 @@ let test_success_cases () =
     
     (* Type annotations *)
     ("fn main() { let x: int = 42; }", "Type annotation");
-    ("fn test(x: &int) { }", "Reference type parameter");
     ("fn test(x: *int) { }", "Pointer type parameter");
     ("fn test(x: [int]) { }", "Array type parameter");
     

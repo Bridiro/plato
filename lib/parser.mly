@@ -218,6 +218,11 @@ param:
     { param_name = name;
       param_type = ty }
   }
+| SELF COLON ty = plato_type
+  {
+    { param_name = "self";
+      param_type = ty }
+  }
 
 (* Return type *)
 return_type:
@@ -368,6 +373,7 @@ assign_op:
 (* Struct field initialization *)
 struct_field:
 | name = IDENTIFIER COLON expr = expression { (name, expr) }
+| name = IDENTIFIER { (name, Identifier name) }  (* Shorthand syntax *)
 
 (* Match arms *)
 match_arm:
