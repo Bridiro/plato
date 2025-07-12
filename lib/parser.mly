@@ -5,7 +5,7 @@ open Ast
 (* Token definitions *)
 %token FN LET MUT IF ELSE WHILE FOR LOOP BREAK CONTINUE RETURN MATCH
 %token STRUCT ENUM IMPL TRAIT USE MOD PUB CONST STATIC TRUE FALSE
-%token AS TYPE IN SIZEOF NULL USIZE
+%token AS TYPE IN SIZEOF NULL SELF USIZE
 %token <string> IDENTIFIER
 %token <int * Ast.integer_suffix option> INTEGER
 %token <float * Ast.float_suffix option> FLOAT
@@ -16,7 +16,7 @@ open Ast
 %token EQ NE LT GT LE GE AND OR NOT
 %token BIT_AND BIT_OR BIT_XOR SHL SHR
 %token BIT_AND_ASSIGN BIT_OR_ASSIGN BIT_XOR_ASSIGN SHL_ASSIGN SHR_ASSIGN
-%token ASSIGN ARROW DOT COMMA SEMICOLON COLON QUESTION DOTDOT DOUBLE_COLON
+%token ASSIGN ARROW FAT_ARROW DOT COMMA SEMICOLON COLON QUESTION DOTDOT DOUBLE_COLON UNDERSCORE
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE
 %token EOF
 
@@ -242,26 +242,27 @@ impl_item:
 
 (* Types *)
 plato_type:
-| ty = primitive_type { PrimType ty }
+| path = path generics = type_generics?
+  { 
+    (* Convert single-identifier primitive types to PrimType *)
+    match path with
+    | [name] -> (
+      match name with
+      | "i8" -> PrimType I8 | "i16" -> PrimType I16 | "i32" -> PrimType I32 | "i64" -> PrimType I64
+      | "u8" -> PrimType U8 | "u16" -> PrimType U16 | "u32" -> PrimType U32 | "u64" -> PrimType U64
+      | "usize" -> PrimType Usize | "f32" -> PrimType F32 | "f64" -> PrimType F64
+      | "bool" -> PrimType Bool | "char" -> PrimType Char | "str" -> PrimType Str | "void" -> PrimType Void
+      | "int" -> PrimType I32  (* Add int as alias for i32 *)
+      | _ -> PathType (path, generics)
+    )
+    | _ -> PathType (path, generics)
+  }
 | LBRACKET ty = plato_type SEMICOLON size = expression RBRACKET
   { ArrayType (ty, size) }
 | STAR ty = plato_type { PointerType ty }
 | FN LPAREN params = separated_list(COMMA, plato_type) RPAREN
   return_type = return_type?
   { FunctionType (params, return_type) }
-| path = path generics = type_generics?
-  { PathType (path, generics) }
-
-primitive_type:
-| name = IDENTIFIER {
-  match name with
-  | "i8" -> I8 | "i16" -> I16 | "i32" -> I32 | "i64" -> I64
-  | "u8" -> U8 | "u16" -> U16 | "u32" -> U32 | "u64" -> U64
-  | "usize" -> Usize | "f32" -> F32 | "f64" -> F64
-  | "bool" -> Bool | "char" -> Char | "str" -> Str | "void" -> Void
-  | "int" -> I32  (* Add int as alias for i32 *)
-  | _ -> failwith ("Unknown primitive type: " ^ name)
-}
 
 type_generics:
 | LT types = separated_list(COMMA, plato_type) GT { types }
@@ -279,6 +280,7 @@ simple_expression:
 
 expression:
 | e = simple_expression { e }
+| path = path { match path with [id] -> Identifier id | _ -> PathExpr path }
 | e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
 | op = unary_op e = expression %prec NOT { UnaryOp (op, e) }
 | e = expression AS ty = plato_type { Cast (e, ty) }
@@ -293,7 +295,7 @@ expression:
   { StructExpr (path, fields) }
 | IF cond = condition_expr then_block = block ELSE else_block = block %prec IF
   { If (cond, then_block, Some else_block) }
-| MATCH expr = expression LBRACE arms = match_arm+ RBRACE
+| MATCH expr = expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
   { Match (expr, arms) }
 | LOOP body = block { Loop body }
 | WHILE cond = condition_expr body = block %prec WHILE { While (cond, body) }
@@ -366,13 +368,13 @@ struct_field:
 
 (* Match arms *)
 match_arm:
-| pattern = pattern ARROW expr = expression COMMA?
+| pattern = pattern FAT_ARROW expr = expression
   { MatchArm (pattern, expr) }
 
 (* Patterns *)
 pattern:
 | lit = literal { LiteralPattern lit }
-| id = IDENTIFIER { IdentifierPattern id }
+| id = IDENTIFIER { if id = "_" then WildcardPattern else IdentifierPattern id }
 | path = path LPAREN patterns = separated_list(COMMA, pattern) RPAREN
   { EnumPattern (path, Some patterns) }
 | path = path { EnumPattern (path, None) }

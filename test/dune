@@ -122,3 +122,33 @@
  (name test_rust_style_if)
  (modules test_rust_style_if)
  (libraries plato))
+
+(executable
+ (name test_comprehensive)
+ (modules test_comprehensive)
+ (libraries plato))
+
+(executable
+ (name test_path_expr)
+ (modules test_path_expr)
+ (libraries plato))
+
+(executable
+ (name test_match)
+ (modules test_match)
+ (libraries plato))
+
+(executable
+ (name test_match_fixed)
+ (modules test_match_fixed)
+ (libraries plato))
+
+(executable
+ (name test_impl)
+ (modules test_impl)
+ (libraries plato))
+
+(executable
+ (name test_type_parsing)
+ (modules test_type_parsing)
+ (libraries plato))

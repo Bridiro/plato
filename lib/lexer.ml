@@ -34,6 +34,7 @@ let keywords =
     ("in", IN);
     ("sizeof", SIZEOF);
     ("null", NULL);
+    ("self", SELF);
     ("usize", USIZE);
   ]
 
@@ -339,6 +340,7 @@ let next_token state =
     | '=' -> begin
       match peek_char state 1 with
       | Some '=' -> (EQ, advance_n state 2)
+      | Some '>' -> (FAT_ARROW, advance_n state 2)
       | _ -> (ASSIGN, advance state)
     end
     | '!' -> begin

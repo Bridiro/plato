@@ -102,6 +102,7 @@ and assign_op =
 and expression =
   | Literal of literal
   | Identifier of string
+  | PathExpr of path
   | BinaryOp of expression * binary_op * expression
   | UnaryOp of unary_op * expression
   | Cast of expression * plato_type
