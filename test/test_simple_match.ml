@@ -6,7 +6,7 @@ let test_simple_match () =
     Printf.printf "Simple test %d: %s -> " (i + 1) test;
     try
       let (lexer_fn, lexbuf) = Plato.Lexer.parse_string test in
-      let _ast = Plato.Parser.expression lexer_fn lexbuf in  (* Parse as expression, not program *)
+      let _ast = Plato.Parser.program lexer_fn lexbuf in  (* Parse as expression, not program *)
       Printf.printf "✓ Success\n";
     with
     | Plato.Lexer.LexError err -> Printf.printf "✗ Lexer error: %s\n" err

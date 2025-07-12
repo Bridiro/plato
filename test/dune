@@ -39,6 +39,11 @@
  (libraries plato))
 
 (executable
+ (name test_trailing_commas)
+ (modules test_trailing_commas)
+ (libraries plato))
+
+(executable
  (name test_parser)
  (modules test_parser)
  (libraries plato))

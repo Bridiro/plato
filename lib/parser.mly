@@ -63,7 +63,7 @@ item:
 (* Function definition *)
 function_def:
 | vis = visibility FN name = IDENTIFIER generics = generic_params?
-  LPAREN params = separated_list(COMMA, param) RPAREN
+  LPAREN params = param_list RPAREN
   return_type = return_type? body = block
   {
     { func_vis = vis;
@@ -77,7 +77,7 @@ function_def:
 (* Struct definition *)
 struct_def:
 | vis = visibility STRUCT name = IDENTIFIER generics = generic_params?
-  LBRACE fields = separated_list(COMMA, field_def) RBRACE
+  LBRACE fields = field_list RBRACE
   {
     { struct_vis = vis;
       struct_name = name;
@@ -88,7 +88,7 @@ struct_def:
 (* Enum definition *)
 enum_def:
 | vis = visibility ENUM name = IDENTIFIER generics = generic_params?
-  LBRACE variants = separated_list(COMMA, enum_variant) RBRACE
+  LBRACE variants = variant_list RBRACE
   {
     { enum_vis = vis;
       enum_name = name;
@@ -206,7 +206,7 @@ enum_variant:
   }
 
 variant_data:
-| LPAREN types = separated_list(COMMA, plato_type) RPAREN { types }
+| LPAREN types = type_list RPAREN { types }
 
 variant_value:
 | ASSIGN i = INTEGER { let (value, _) = i in value }
@@ -286,11 +286,11 @@ expression:
 | e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
 | e = expression DOT field = IDENTIFIER { FieldAccess (e, field) }
 | e = expression ARROW field = IDENTIFIER { PointerAccess (e, field) }
-| func = expression LPAREN args = separated_list(COMMA, expression) RPAREN
+| func = expression LPAREN args = expression_list RPAREN
   { FunctionCall (func, args) }
-| LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
+| LBRACKET exprs = expression_list RBRACKET
   { ArrayExpr exprs }
-| path = path LBRACE fields = separated_list(COMMA, struct_field) RBRACE
+| path = path LBRACE fields = struct_field_list RBRACE
   { StructExpr (path, fields) }
 | IF cond = condition_expr then_block = block ELSE else_block = block %prec IF
   { If (cond, then_block, Some else_block) }
@@ -433,5 +433,42 @@ condition_expr:
 | e1 = condition_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
 | LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
   { ArrayExpr exprs }
+
+(* Lists with optional trailing commas *)
+field_list:
+| (* empty *) { [] }
+| field = field_def { [field] }
+| field = field_def COMMA { [field] }
+| field = field_def COMMA rest = field_list { field :: rest }
+
+variant_list:
+| (* empty *) { [] }
+| variant = enum_variant { [variant] }
+| variant = enum_variant COMMA { [variant] }
+| variant = enum_variant COMMA rest = variant_list { variant :: rest }
+
+struct_field_list:
+| (* empty *) { [] }
+| field = struct_field { [field] }
+| field = struct_field COMMA { [field] }
+| field = struct_field COMMA rest = struct_field_list { field :: rest }
+
+expression_list:
+| (* empty *) { [] }
+| expr = expression { [expr] }
+| expr = expression COMMA { [expr] }
+| expr = expression COMMA rest = expression_list { expr :: rest }
+
+param_list:
+| (* empty *) { [] }
+| param = param { [param] }
+| param = param COMMA { [param] }
+| param = param COMMA rest = param_list { param :: rest }
+
+type_list:
+| (* empty *) { [] }
+| ty = plato_type { [ty] }
+| ty = plato_type COMMA { [ty] }
+| ty = plato_type COMMA rest = type_list { ty :: rest }
 
 %%

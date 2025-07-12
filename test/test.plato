@@ -3,11 +3,11 @@ let b: bool = true;
 
 struct Point {
     x: i32,
-    y: i32
+    y: i32,
 }
 
 fn mul(x: int, y: int) -> int {
-    x * y;
+    x * y
 }
 
 fn main() -> int {
