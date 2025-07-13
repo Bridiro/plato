@@ -15,6 +15,14 @@ type type_env = {
   functions: (string * (simple_type list * simple_type)) list;
 }
 
+(* Type error exception with position info *)
+exception TypeCheckError of string * int * int (* message, line, column *)
+
+(* Helper to get current position from lexer *)
+let get_current_position () =
+  let (line, column, _pos) = Lexer.get_last_token_position () in
+  (line, column)
+
 let empty_env = { variables = []; functions = [] }
 
 let add_variable env name typ =
@@ -56,7 +64,9 @@ let rec check_expression env = function
   | Identifier name ->
       (match lookup_variable env name with
        | Some typ -> typ
-       | None -> failwith ("Undefined variable: " ^ name))
+       | None -> 
+           let (line, column) = get_current_position () in
+           raise (TypeCheckError ("Undefined variable: " ^ name, line, column)))
   | BinaryOp (left, op, right) ->
       let left_type = check_expression env left in
       let right_type = check_expression env right in
@@ -68,14 +78,18 @@ let rec check_expression env = function
        | (Eq | Ne), TString, TString -> TBool
        | (Eq | Ne), TBool, TBool -> TBool
        | (And | Or), TBool, TBool -> TBool
-       | _ -> failwith ("Type mismatch in binary operation"))
+       | _ -> 
+           let (line, column) = get_current_position () in
+           raise (TypeCheckError ("Type mismatch in binary operation", line, column)))
   | UnaryOp (op, expr) ->
       let expr_type = check_expression env expr in
       (match op, expr_type with
        | Not, TBool -> TBool
        | Neg, TInt -> TInt
        | Neg, TFloat -> TFloat
-       | _ -> failwith ("Type mismatch in unary operation"))
+       | _ -> 
+           let (line, column) = get_current_position () in
+           raise (TypeCheckError ("Type mismatch in unary operation", line, column)))
   | FunctionCall (func_expr, args) ->
       (match func_expr with
        | Identifier name ->
@@ -85,13 +99,19 @@ let rec check_expression env = function
                 if List.length param_types = List.length arg_types then (
                   List.iter2 (fun expected actual ->
                     if expected <> actual then
-                      failwith ("Function " ^ name ^ " expects different argument types")
+                      let (line, column) = get_current_position () in
+                      raise (TypeCheckError ("Function " ^ name ^ " expects different argument types", line, column))
                   ) param_types arg_types;
                   return_type
                 ) else
-                  failwith ("Function " ^ name ^ " called with wrong number of arguments")
-            | None -> failwith ("Undefined function: " ^ name))
-       | _ -> failwith ("Complex function expressions not supported yet"))
+                  let (line, column) = get_current_position () in
+                  raise (TypeCheckError ("Function " ^ name ^ " called with wrong number of arguments", line, column))
+            | None -> 
+                let (line, column) = get_current_position () in
+                raise (TypeCheckError ("Undefined function: " ^ name, line, column)))
+       | _ -> 
+           let (line, column) = get_current_position () in
+           raise (TypeCheckError ("Complex function expressions not supported yet", line, column)))
   | Block (statements, expr_opt) ->
       let env' = List.fold_left check_statement env statements in
       (match expr_opt with
@@ -99,20 +119,27 @@ let rec check_expression env = function
        | None -> TUnit)
   | If (cond, then_block, else_block_opt) ->
       let cond_type = check_expression env cond in
-      if cond_type <> TBool then
-        failwith ("If condition must be boolean");
+      if cond_type <> TBool then (
+        let (line, column) = get_current_position () in
+        raise (TypeCheckError ("If condition must be boolean", line, column))
+      );
       let then_type = check_expression env (Block then_block) in
       (match else_block_opt with
        | Some else_block ->
            let else_type = check_expression env (Block else_block) in
            if then_type = else_type then then_type
-           else failwith ("If branches have different types")
+           else (
+             let (line, column) = get_current_position () in
+             raise (TypeCheckError ("If branches have different types", line, column))
+           )
        | None -> TUnit)
   | Return expr_opt ->
       (match expr_opt with
        | Some expr -> check_expression env expr
        | None -> TUnit)
-  | _ -> failwith ("Expression type checking not implemented for this construct")
+  | _ -> 
+      let (line, column) = get_current_position () in
+      raise (TypeCheckError ("Expression type checking not implemented for this construct", line, column))
 
 (* Type checking for statements *)
 and check_statement env = function
@@ -128,7 +155,9 @@ and check_statement env = function
        | None -> 
            (* Variable declaration without initialization - for now just add with TUnit *)
            add_variable env name TUnit)
-  | _ -> failwith ("Statement type checking not implemented for this construct")
+  | _ -> 
+      let (line, column) = get_current_position () in
+      raise (TypeCheckError ("Statement type checking not implemented for this construct", line, column))
 
 (* Type checking for top-level items *)
 let check_item env = function
@@ -158,11 +187,15 @@ let check_item env = function
       env
 
 (* Main type checking function *)
-let type_check_program program =
+let type_check_program program filename =
   try
     ignore (List.fold_left check_item builtin_env program);
     Printf.printf "✓ Type checking passed\n"
   with
+  | TypeCheckError (msg, line, column) ->
+      (* Create a proper error with position information *)
+      let error = Error.type_error ~filename:(Some filename) ~line ~column ~offset:0 msg in
+      raise error
   | Failure msg ->
-      Printf.eprintf "Type error: %s\n" msg;
-      exit 1
+      let error = Error.type_error ~filename:(Some filename) ~line:1 ~column:1 ~offset:0 msg in
+      raise error

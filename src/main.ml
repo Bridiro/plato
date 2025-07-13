@@ -15,10 +15,6 @@ let read_file_with_lines filename =
   let lines = String.split_on_char '\n' content in
   (content, Array.of_list lines)
 
-(* Uniform error reporting *)
-let report_error filename line column message error_type =
-  Printf.eprintf "%s error at %s:%d:%d: %s\n" error_type filename line column message
-
 (* Helper function to parse with better error reporting *)
 let parse_with_error_reporting content filename =
   let (lexer_fn, lexbuf) = Lexer.parse_string content in
@@ -30,8 +26,10 @@ let parse_with_error_reporting content filename =
   | Parser.Error -> 
       (* Use our custom position tracking for accurate error reporting *)
       let (line, column, _pos) = Lexer.get_last_token_position () in
-      report_error filename line column "Syntax error" "Parser";
-      exit 1
+      let pos = Error.make_position line column 0 in
+      let span = Error.make_span pos pos (Some filename) in
+      let error = Error.make_error (Error.ParseError "Syntax error") span "Syntax error" in
+      raise (Error.CompilerError error)
 
 let () =
   Arg.parse spec_list set_input_file usage_msg;
@@ -49,7 +47,7 @@ let () =
     let ast = parse_with_error_reporting content !input_file in
     
     (* Type check the program *)
-    Plato.Type_checker.type_check_program ast;
+    Plato.Type_checker.type_check_program ast !input_file;
     
     (* For now, just print success and show the AST structure *)
     Printf.printf "✓ Successfully parsed and type-checked: %s\n" !input_file;
@@ -60,7 +58,11 @@ let () =
       Printf.eprintf "File error: %s\n" msg;
       exit 1
   | Lexer.LexErrorWithPos (msg, line, column) ->
-      report_error !input_file line column msg "Lexer";
+      let pos = Error.make_position line column 0 in
+      let span = Error.make_span pos pos (Some !input_file) in
+      let error = Error.make_error (Error.LexError msg) span msg in
+      let (_content, source_lines) = read_file_with_lines !input_file in
+      Printf.eprintf "%s\n" (Error.show_error_context error source_lines);
       exit 1
   | Lexer.LexError err -> 
       Printf.eprintf "Lexer error: %s\n" err;

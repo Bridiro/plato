@@ -12,6 +12,7 @@ let run_all_tests () =
   let tests = [
     "test_lexer";
     "test_parser";
+    "test_type_checker";
     "test_integration";
     "test_features";
     "test_comprehensive";
