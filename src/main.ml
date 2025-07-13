@@ -48,8 +48,11 @@ let () =
     (* Parse the program *)
     let ast = parse_with_error_reporting content !input_file in
     
+    (* Type check the program *)
+    Plato.Type_checker.type_check_program ast;
+    
     (* For now, just print success and show the AST structure *)
-    Printf.printf "✓ Successfully parsed: %s\n" !input_file;
+    Printf.printf "✓ Successfully parsed and type-checked: %s\n" !input_file;
     Printf.printf "Program contains %d top-level items\n" (List.length ast);
     
   with
