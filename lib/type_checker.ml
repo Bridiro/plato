@@ -18,6 +18,9 @@ type simple_type =
 type type_env = {
   variables: (string * simple_type) list;
   functions: (string * (simple_type list * simple_type)) list;
+  structs: (string * (string * simple_type) list) list;  (* struct_name -> fields *)
+  enums: (string * string list) list;  (* enum_name -> variants *)
+  traits: (string * string list) list;  (* trait_name -> methods *)
 }
 
 (* Type error exception with position info *)
@@ -28,7 +31,7 @@ let get_current_position () =
   let (line, column, _pos) = Lexer.get_last_token_position () in
   (line, column)
 
-let empty_env = { variables = []; functions = [] }
+let empty_env = { variables = []; functions = []; structs = []; enums = []; traits = [] }
 
 let add_variable env name typ =
   { env with variables = (name, typ) :: env.variables }
@@ -36,12 +39,29 @@ let add_variable env name typ =
 let add_function env name param_types return_type =
   { env with functions = (name, (param_types, return_type)) :: env.functions }
 
+let add_struct env name fields =
+  { env with structs = (name, fields) :: env.structs }
+
+let add_enum env name variants =
+  { env with enums = (name, variants) :: env.enums }
+
+let add_trait env name methods =
+  { env with traits = (name, methods) :: env.traits }
+
 let lookup_variable env name =
   try Some (List.assoc name env.variables)
   with Not_found -> None
 
 let lookup_function env name =
   try Some (List.assoc name env.functions)
+  with Not_found -> None
+
+let lookup_struct env name =
+  try Some (List.assoc name env.structs)
+  with Not_found -> None
+
+let lookup_enum env name =
+  try Some (List.assoc name env.enums)
   with Not_found -> None
 
 (* Convert AST literal to simple type with backwards compatibility *)
@@ -137,27 +157,58 @@ let rec check_expression env = function
            let (line, column) = get_current_position () in
            raise (TypeCheckError ("Type mismatch in unary operation", line, column)))
   | FunctionCall (func_expr, args) ->
-      (match func_expr with
-       | Identifier name ->
-           (match lookup_function env name with
-            | Some (param_types, return_type) ->
-                let arg_types = List.map (check_expression env) args in
-                if List.length param_types = List.length arg_types then (
-                  List.iter2 (fun expected actual ->
-                    if expected <> actual then
+      (* Handle different types of function expressions *)
+      let (func_name, param_types, return_type) = match func_expr with
+        | Identifier name ->
+            (match lookup_function env name with
+             | Some (params, ret) -> (name, params, ret)
+             | None -> 
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Undefined function: " ^ name, line, column)))
+        | FieldAccess (struct_expr, method_name) ->
+            (* Method call - check struct type and look up method *)
+            let struct_type = check_expression env struct_expr in
+            (match struct_type with
+             | TStruct (struct_name, _) ->
+                 let method_full_name = struct_name ^ "::" ^ method_name in
+                 (match lookup_function env method_full_name with
+                  | Some (params, ret) -> (method_full_name, params, ret)
+                  | None ->
                       let (line, column) = get_current_position () in
-                      raise (TypeCheckError ("Function " ^ name ^ " expects different argument types", line, column))
-                  ) param_types arg_types;
-                  return_type
-                ) else
-                  let (line, column) = get_current_position () in
-                  raise (TypeCheckError ("Function " ^ name ^ " called with wrong number of arguments", line, column))
-            | None -> 
-                let (line, column) = get_current_position () in
-                raise (TypeCheckError ("Undefined function: " ^ name, line, column)))
-       | _ -> 
-           let (line, column) = get_current_position () in
-           raise (TypeCheckError ("Complex function expressions not supported yet", line, column)))
+                      raise (TypeCheckError ("Method not found: " ^ method_name, line, column)))
+             | _ ->
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Method call on non-struct type", line, column)))
+        | PathExpr path ->
+            (* Static function call or constructor *)
+            let func_name = String.concat "::" path in
+            (match lookup_function env func_name with
+             | Some (params, ret) -> (func_name, params, ret)
+             | None ->
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Function not found: " ^ func_name, line, column)))
+        | _ ->
+            (* For other complex expressions, assume they return a function type *)
+            let func_type = check_expression env func_expr in
+            (match func_type with
+             | TFunction (params, ret) -> ("closure", params, ret)
+             | _ ->
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Expression is not callable", line, column)))
+      in
+      
+      (* Type check arguments *)
+      let arg_types = List.map (check_expression env) args in
+      if List.length param_types = List.length arg_types then (
+        List.iter2 (fun expected actual ->
+          if normalize_type actual <> normalize_type expected then
+            let (line, column) = get_current_position () in
+            raise (TypeCheckError ("Function " ^ func_name ^ " expects different argument types", line, column))
+        ) param_types arg_types;
+        return_type
+      ) else
+        let (line, column) = get_current_position () in
+        raise (TypeCheckError ("Function " ^ func_name ^ " called with wrong number of arguments", line, column))
   | Block (statements, expr_opt) ->
       let env' = List.fold_left check_statement env statements in
       (match expr_opt with
@@ -213,16 +264,24 @@ let rec check_expression env = function
            raise (TypeCheckError ("Index operation requires array type", line, column)))
   | FieldAccess (struct_expr, field_name) ->
       let struct_type = check_expression env struct_expr in
-      (* For now, return a generic type - proper struct field lookup would require struct definitions *)
       (match struct_type with
-       | TStruct (_name, fields) ->
+       | TStruct (struct_name, fields) ->
+           (* First try to find field in the struct type itself *)
            (try List.assoc field_name fields
             with Not_found -> 
-              let (line, column) = get_current_position () in
-              raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
+              (* Then try to find it in the global struct definition *)
+              match lookup_struct env struct_name with
+              | Some global_fields ->
+                  (try List.assoc field_name global_fields
+                   with Not_found ->
+                     let (line, column) = get_current_position () in
+                     raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
+              | None ->
+                  let (line, column) = get_current_position () in
+                  raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
        | _ -> 
-           (* For now, assume field access on unknown types returns i32 *)
-           TI32)
+           let (line, column) = get_current_position () in
+           raise (TypeCheckError ("Field access requires struct type", line, column)))
   | StructExpr (path, field_exprs) ->
       (* Check that all field expressions are valid *)
       let field_types = List.map (fun (field_name, expr) -> 
@@ -233,16 +292,55 @@ let rec check_expression env = function
       let struct_name = String.concat "::" path in
       TStruct (struct_name, field_types)
   | Cast (expr, target_type) ->
-      (* Check source expression and validate cast *)
       let source_type = check_expression env expr in
       let target_simple = ast_type_to_simple_type target_type in
-      (* For now, allow all casts - proper cast validation would check type compatibility *)
-      ignore source_type;
-      target_simple
+      let source_norm = normalize_type source_type in
+      let target_norm = normalize_type target_simple in
+      
+      (* Validate that the cast is reasonable *)
+      let is_valid_cast = match source_norm, target_norm with
+        | TI32, TI32 -> true  (* Same type (normalized) *)
+        | TI32, TF64 -> true  (* int to float *)
+        | TF64, TI32 -> true  (* float to int *)
+        | TI32, TStr -> true  (* int to string *)
+        | TStr, TI32 -> true  (* string to int *)
+        | TBool, TI32 -> true (* bool to int *)
+        | TI32, TBool -> true (* int to bool *)
+        | TPointer _, TI32 -> true (* pointer to int *)
+        | TI32, TPointer _ -> true (* int to pointer *)
+        | _ when source_norm = target_norm -> true  (* Same normalized type *)
+        | _ -> false
+      in
+      
+      if is_valid_cast then target_simple
+      else (
+        let (line, column) = get_current_position () in
+        raise (TypeCheckError ("Invalid cast from source type to target type", line, column))
+      )
   | PathExpr path ->
-      (* For now, treat path expressions as enum/constant references *)
       let name = String.concat "::" path in
-      TGeneric name
+      (* Check if it's an enum variant *)
+      let enum_check = List.fold_left (fun acc (enum_name, variants) ->
+        match acc with
+        | Some t -> Some t
+        | None -> 
+            if List.mem (List.hd (List.rev path)) variants then
+              Some (TEnum (enum_name, variants))
+            else None
+      ) None env.enums in
+      
+      (match enum_check with
+       | Some enum_type -> enum_type
+       | None ->
+           (* Check if it's a function or variable *)
+           (match lookup_function env name with
+            | Some (params, ret) -> TFunction (params, ret)
+            | None ->
+                (match lookup_variable env name with
+                 | Some var_type -> var_type
+                 | None -> 
+                     (* Treat as generic type/constant *)
+                     TGeneric name)))
   | PointerAccess (ptr_expr, _field) ->
       (* Check pointer expression *)
       let ptr_type = check_expression env ptr_expr in
@@ -316,17 +414,148 @@ and check_statement env = function
             | None ->
                 let (line, column) = get_current_position () in
                 raise (TypeCheckError ("Variable declaration requires either type annotation or initializer", line, column))))
-  | AssignStmt (_lvalue, _assign_op, expr) ->
-      (* Type check assignment - for now just check that RHS is valid *)
-      ignore (check_expression env expr);
-      (* TODO: Proper lvalue type checking *)
+  | AssignStmt (lvalue, assign_op, expr) ->
+      (* Type check the RHS expression *)
+      let rhs_type = check_expression env expr in
+      
+      (* Type check the lvalue and get its type *)
+      let lvalue_type = match lvalue with
+        | LvalueId name ->
+            (match lookup_variable env name with
+             | Some var_type -> var_type
+             | None ->
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Undefined variable in assignment: " ^ name, line, column)))
+        | LvalueDeref lval ->
+            (* For pointer dereferencing, recursively check the lvalue *)
+            let ptr_type = match lval with
+              | LvalueId name ->
+                  (match lookup_variable env name with
+                   | Some (TPointer inner_type) -> inner_type
+                   | Some _ ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Cannot dereference non-pointer type", line, column))
+                   | None ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Undefined variable in dereference: " ^ name, line, column)))
+              | _ ->
+                  let (line, column) = get_current_position () in
+                  raise (TypeCheckError ("Complex lvalue dereferencing not fully supported", line, column))
+            in ptr_type
+        | LvalueIndex (lval, index_expr) ->
+            (* For array indexing, check the base lvalue and index *)
+            let base_type = match lval with
+              | LvalueId name ->
+                  (match lookup_variable env name with
+                   | Some (TArray (elem_type, _)) -> elem_type
+                   | Some _ ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Cannot index non-array type", line, column))
+                   | None ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Undefined variable in index: " ^ name, line, column)))
+              | _ ->
+                  let (line, column) = get_current_position () in
+                  raise (TypeCheckError ("Complex lvalue indexing not fully supported", line, column))
+            in
+            let index_type = check_expression env index_expr in
+            if normalize_type index_type <> TI32 then (
+              let (line, column) = get_current_position () in
+              raise (TypeCheckError ("Array index must be integer", line, column))
+            );
+            base_type
+        | LvalueField (lval, field_name) ->
+            (* For field access, check the base lvalue type *)
+            let base_type = match lval with
+              | LvalueId name ->
+                  (match lookup_variable env name with
+                   | Some struct_type -> struct_type
+                   | None ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Undefined variable in field access: " ^ name, line, column)))
+              | _ ->
+                  let (line, column) = get_current_position () in
+                  raise (TypeCheckError ("Complex lvalue field access not fully supported", line, column))
+            in
+            (match base_type with
+             | TStruct (struct_name, fields) ->
+                 (try List.assoc field_name fields
+                  with Not_found ->
+                    match lookup_struct env struct_name with
+                    | Some global_fields ->
+                        (try List.assoc field_name global_fields
+                         with Not_found ->
+                           let (line, column) = get_current_position () in
+                           raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
+                    | None ->
+                        let (line, column) = get_current_position () in
+                        raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
+             | _ ->
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Field access on non-struct type", line, column)))
+        | LvaluePointer (lval, field_name) ->
+            (* For pointer field access, check the base pointer type *)
+            let base_type = match lval with
+              | LvalueId name ->
+                  (match lookup_variable env name with
+                   | Some (TPointer struct_type) -> struct_type
+                   | Some _ ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Pointer field access on non-pointer type", line, column))
+                   | None ->
+                       let (line, column) = get_current_position () in
+                       raise (TypeCheckError ("Undefined variable in pointer access: " ^ name, line, column)))
+              | _ ->
+                  let (line, column) = get_current_position () in
+                  raise (TypeCheckError ("Complex lvalue pointer access not fully supported", line, column))
+            in
+            (match base_type with
+             | TStruct (struct_name, fields) ->
+                 (try List.assoc field_name fields
+                  with Not_found ->
+                    match lookup_struct env struct_name with
+                    | Some global_fields ->
+                        (try List.assoc field_name global_fields
+                         with Not_found ->
+                           let (line, column) = get_current_position () in
+                           raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
+                    | None ->
+                        let (line, column) = get_current_position () in
+                        raise (TypeCheckError ("Struct field not found: " ^ field_name, line, column)))
+             | _ ->
+                 let (line, column) = get_current_position () in
+                 raise (TypeCheckError ("Pointer field access on non-struct type", line, column)))
+      in
+      
+      (* Check assignment compatibility based on operation *)
+      let expected_type = match assign_op with
+        | Assign -> lvalue_type
+        | AddAssign | SubAssign | MulAssign | DivAssign | ModAssign ->
+            if normalize_type lvalue_type <> TI32 && normalize_type lvalue_type <> TF64 then (
+              let (line, column) = get_current_position () in
+              raise (TypeCheckError ("Arithmetic assignment requires numeric lvalue", line, column))
+            );
+            lvalue_type
+        | BitAndAssign | BitOrAssign | BitXorAssign | ShlAssign | ShrAssign ->
+            if normalize_type lvalue_type <> TI32 then (
+              let (line, column) = get_current_position () in
+              raise (TypeCheckError ("Bitwise assignment requires integer lvalue", line, column))
+            );
+            lvalue_type
+      in
+      
+      if normalize_type rhs_type <> normalize_type expected_type then (
+        let (line, column) = get_current_position () in
+        raise (TypeCheckError ("Assignment type mismatch", line, column))
+      );
+      
       env
-  | ItemStmt _item ->
-      (* TODO: Handle nested items *)
-      env
+  | ItemStmt item ->
+      (* Handle nested items by delegating to check_item *)
+      check_item env item
 
 (* Type checking for top-level items *)
-let check_item env = function
+and check_item env = function
   | Function func_def ->
       (* Add function to environment first *)
       let param_types = List.map (fun param -> 
@@ -348,6 +577,61 @@ let check_item env = function
       let (statements, _expr_opt) = func_def.func_body in
       ignore (List.fold_left check_statement local_env statements);
       env_with_func
+      
+  | Struct struct_def ->
+      (* Add struct to environment *)
+      let field_types = List.map (fun field_def ->
+        let field_type = ast_type_to_simple_type field_def.field_type in
+        (field_def.field_name, field_type)
+      ) struct_def.struct_fields in
+      add_struct env struct_def.struct_name field_types
+      
+  | Enum enum_def ->
+      (* Add enum to environment *)
+      let variant_names = List.map (fun variant ->
+        variant.variant_name
+      ) enum_def.enum_variants in
+      add_enum env enum_def.enum_name variant_names
+      
+  | Trait trait_def ->
+      (* Add trait to environment *)
+      let method_names = List.map (fun trait_item ->
+        match trait_item with
+        | TraitFunction (name, _generics, _params, _return) -> name
+        | AssociatedType (name, _) -> name
+      ) trait_def.trait_items in
+      add_trait env trait_def.trait_name method_names
+      
+  | Impl impl_def ->
+      (* Add impl methods to environment *)
+      List.fold_left (fun acc_env impl_item ->
+        match impl_item with
+        | ImplFunction func_def ->
+            (* Add method with qualified name *)
+            let method_name = match impl_def.impl_trait with
+              | Some trait_path ->
+                  let trait_name = String.concat "::" trait_path in
+                  trait_name ^ "::" ^ func_def.func_name
+              | None ->
+                  (* Instance method - need type name *)
+                  let type_name = match impl_def.impl_type with
+                    | PathType (path, _) -> String.concat "::" path
+                    | _ -> "UnknownType"
+                  in
+                  type_name ^ "::" ^ func_def.func_name
+            in
+            let param_types = List.map (fun param ->
+              ast_type_to_simple_type param.param_type
+            ) func_def.func_params in
+            let return_type = match func_def.func_return with
+              | Some ast_type -> ast_type_to_simple_type ast_type
+              | None -> TUnit in
+            add_function acc_env method_name param_types return_type
+        | ImplTypeAlias (_name, _type) ->
+            (* Type aliases within impl blocks *)
+            acc_env
+      ) env impl_def.impl_items
+      
   | GlobalVar (_, _, _, name, typ_opt, expr) ->
       let expr_type = check_expression env expr in
       (* Validate against declared type if present *)
@@ -360,15 +644,27 @@ let check_item env = function
            );
            add_variable env name expected_type
        | None -> add_variable env name expr_type)
-  | _ -> 
-      (* For other constructs, just return the environment unchanged *)
+       
+  | TypeAlias (_vis, _name, _generics, _target_type) ->
+      (* Type aliases - for now just pass through *)
       env
+      
+  | Use (_vis, _path) ->
+      (* Use statements - for now just pass through *)
+      env
+      
+  | Mod (_vis, _name, items_opt) ->
+      (* Module definitions *)
+      (match items_opt with
+       | Some items ->
+           (* Type check all items in the module *)
+           List.fold_left check_item env items
+       | None -> env)
 
 (* Main type checking function *)
 let type_check_program program filename =
   try
     ignore (List.fold_left check_item builtin_env program);
-    Printf.printf "✓ Type checking passed\n"
   with
   | TypeCheckError (msg, line, column) ->
       (* Create a proper error with position information *)

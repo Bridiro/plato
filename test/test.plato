@@ -24,6 +24,7 @@ fn mul(x: i32, y: i32) -> i32 {
 
 fn main() -> i32 {
     let color = Color::Red;
+    let p = Point::new(2, 3);
     if b {
         return mul(a, 2);
     }
