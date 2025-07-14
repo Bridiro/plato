@@ -61,6 +61,13 @@ let with_position startpos _endpos x =
 %public %inline located(X):
 | x = X { with_position $startpos $endpos x }
 
+(* Enhanced positioned versions of key constructs *)
+%public %inline positioned_binary_op(OP):
+| op = OP { (op, make_position $startpos(op)) }
+
+%public %inline positioned_expression:
+| e = expression { (e, make_position $startpos $endpos) }
+
 (* Program *)
 program:
 | items = item* EOF { items }
@@ -413,13 +420,20 @@ pattern:
 
 (* Statements *)
 statement:
+| let_stmt = located(let_statement) { let (stmt, _pos) = let_stmt in stmt }
+| assign_stmt = located(assign_statement) { let (stmt, _pos) = assign_stmt in stmt }
+| expr = expression SEMICOLON { ExprStmt expr }
+| item = item { ItemStmt item }
+
+(* Helper statement constructors for located pattern *)
+let_statement:
 | LET is_mut = MUT? name = IDENTIFIER type_ann = type_annotation?
   init = initer? SEMICOLON
   { LetStmt ((is_mut <> None), name, type_ann, init) }
+
+assign_statement:
 | lval = lvalue op = assign_op expr = expression SEMICOLON
   { AssignStmt (lval, op, expr) }
-| expr = expression SEMICOLON { ExprStmt expr }
-| item = item { ItemStmt item }
 
 initer:
 | ASSIGN expr = expression { expr }
