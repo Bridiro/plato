@@ -99,8 +99,15 @@ type lexer_state = {
   filename : string option;
 }
 
-let create_lexer ?(filename=None) input =
-  { input; pos = 0; line = 1; column = 1; length = String.length input; filename }
+let create_lexer ?(filename = None) input =
+  {
+    input;
+    pos = 0;
+    line = 1;
+    column = 1;
+    length = String.length input;
+    filename;
+  }
 
 (* Position-aware error functions *)
 let lex_error_simple state message =
@@ -449,22 +456,24 @@ let create_menhir_lexer input =
   let state = ref (create_lexer input) in
   fun lexbuf ->
     let old_state = !state in
-    let (token, new_state) = next_token !state in
-    
+    let token, new_state = next_token !state in
+
     (* Update global position for error reporting *)
-    last_token_position := (old_state.line, old_state.column, old_state.pos);
-    
+    last_token_position := (old_state.line, old_state.column, old_state.pos) ;
+
     (* CRITICAL: Update lexbuf position for Menhir *)
-    let pos = {
-      Lexing.pos_fname = lexbuf.Lexing.lex_curr_p.Lexing.pos_fname;
-      Lexing.pos_lnum = new_state.line;
-      Lexing.pos_bol = new_state.pos - (new_state.column - 1);
-      Lexing.pos_cnum = new_state.pos;
-    } in
-    lexbuf.Lexing.lex_curr_p <- pos;
-    lexbuf.Lexing.lex_start_p <- pos;
-    
-    state := new_state;
+    let pos =
+      {
+        Lexing.pos_fname = lexbuf.Lexing.lex_curr_p.Lexing.pos_fname;
+        Lexing.pos_lnum = new_state.line;
+        Lexing.pos_bol = new_state.pos - (new_state.column - 1);
+        Lexing.pos_cnum = new_state.pos;
+      }
+    in
+    lexbuf.Lexing.lex_curr_p <- pos ;
+    lexbuf.Lexing.lex_start_p <- pos ;
+
+    state := new_state ;
     token
 
 (* Function to get last token position for error reporting *)
