@@ -3,7 +3,8 @@
  (public_name plato)
  (libraries menhirLib)
  (modules ast error lexer parser type_checker)
- (preprocess (pps ppx_deriving.show)))
+ (preprocess (pps ppx_deriving.show))
+ (flags (:standard -w -32-27)))
 
 (menhir
  (modules parser)

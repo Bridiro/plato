@@ -100,27 +100,27 @@ and assign_op =
   | ShrAssign
 
 and expression =
-  | Literal of literal
-  | Identifier of string
-  | PathExpr of path
-  | BinaryOp of expression * binary_op * expression
-  | UnaryOp of unary_op * expression
-  | Cast of expression * plato_type
-  | Index of expression * expression
-  | FieldAccess of expression * string
-  | PointerAccess of expression * string
-  | FunctionCall of expression * expression list
-  | ArrayExpr of expression list
-  | StructExpr of path * (string * expression) list
-  | Block of block
-  | If of expression * block * block option
-  | Match of expression * match_arm list
-  | Loop of block
-  | While of expression * block
-  | For of string * expression * block
-  | Return of expression option
-  | Break of expression option
-  | Continue
+  | Literal of literal * position
+  | Identifier of string * position
+  | PathExpr of path * position
+  | BinaryOp of expression * binary_op * expression * position
+  | UnaryOp of unary_op * expression * position
+  | Cast of expression * plato_type * position
+  | Index of expression * expression * position
+  | FieldAccess of expression * string * position
+  | PointerAccess of expression * string * position
+  | FunctionCall of expression * expression list * position
+  | ArrayExpr of expression list * position
+  | StructExpr of path * (string * expression) list * position
+  | Block of block * position
+  | If of expression * block * block option * position
+  | Match of expression * match_arm list * position
+  | Loop of block * position
+  | While of expression * block * position
+  | For of string * expression * block * position
+  | Return of expression option * position
+  | Break of expression option * position
+  | Continue of position
 
 and match_arm = MatchArm of pattern * expression
 
@@ -228,3 +228,27 @@ and item =
   | Mod of visibility * string * item list option
 
 type program = item list
+
+(* Helper function to extract position from expressions *)
+let get_expression_position = function
+  | Literal (_, pos) -> pos
+  | Identifier (_, pos) -> pos
+  | PathExpr (_, pos) -> pos
+  | BinaryOp (_, _, _, pos) -> pos
+  | UnaryOp (_, _, pos) -> pos
+  | Cast (_, _, pos) -> pos
+  | Index (_, _, pos) -> pos
+  | FieldAccess (_, _, pos) -> pos
+  | PointerAccess (_, _, pos) -> pos
+  | FunctionCall (_, _, pos) -> pos
+  | ArrayExpr (_, pos) -> pos
+  | StructExpr (_, _, pos) -> pos
+  | Block (_, pos) -> pos
+  | If (_, _, _, pos) -> pos
+  | Match (_, _, pos) -> pos
+  | Loop (_, pos) -> pos
+  | While (_, _, pos) -> pos
+  | For (_, _, _, pos) -> pos
+  | Return (_, pos) -> pos
+  | Break (_, pos) -> pos
+  | Continue pos -> pos

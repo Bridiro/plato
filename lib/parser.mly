@@ -1,5 +1,19 @@
 %{
 open Ast
+
+(* Helper function to create position from Menhir position *)
+let make_position pos =
+  { line = pos.Lexing.pos_lnum; 
+    column = pos.Lexing.pos_cnum - pos.Lexing.pos_bol + 1 }
+
+(* Elegant position tracking pattern from the forum *)
+let make_position_span start_pos _end_pos =
+  { line = start_pos.Lexing.pos_lnum; 
+    column = start_pos.Lexing.pos_cnum - start_pos.Lexing.pos_bol + 1 }
+
+(* Function to add position information to any AST node *)
+let with_position startpos _endpos x =
+  (x, make_position_span startpos startpos)
 %}
 
 (* Token definitions *)
@@ -42,6 +56,10 @@ open Ast
 %type <Ast.program> program
 
 %%
+
+(* Elegant position tracking pattern - can be used anywhere *)
+%public %inline located(X):
+| x = X { with_position $startpos $endpos x }
 
 (* Program *)
 program:
@@ -278,10 +296,11 @@ path:
 
 (* Expressions - simplified version *)
 simple_expression:
-| lit = literal { Literal lit }
-| id = IDENTIFIER { Identifier id }
-| path = multi_part_path { PathExpr path }
+| lit = literal { Literal (lit, make_position $startpos) }
+| id = IDENTIFIER { Identifier (id, make_position $startpos) }
+| path = multi_part_path { PathExpr (path, make_position $startpos) }
 | LPAREN e = expression RPAREN { e }
+| block = block { Block (block, make_position $startpos) }
 
 (* Multi-part paths (at least one ::) *)
 multi_part_path:
@@ -290,29 +309,29 @@ multi_part_path:
 
 expression:
 | e = simple_expression { e }
-| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2) }
-| op = unary_op e = expression %prec NOT { UnaryOp (op, e) }
-| e = expression AS ty = plato_type { Cast (e, ty) }
-| e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
-| e = expression DOT field = IDENTIFIER { FieldAccess (e, field) }
-| e = expression ARROW field = IDENTIFIER { PointerAccess (e, field) }
+| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2, make_position $startpos(op)) }
+| op = unary_op e = expression %prec NOT { UnaryOp (op, e, make_position $startpos) }
+| e = expression AS ty = plato_type { Cast (e, ty, make_position $startpos) }
+| e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
+| e = expression DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
+| e = expression ARROW field = IDENTIFIER { PointerAccess (e, field, make_position $startpos) }
 | func = expression LPAREN args = expression_list RPAREN
-  { FunctionCall (func, args) }
+  { FunctionCall (func, args, make_position $startpos) }
 | LBRACKET exprs = expression_list RBRACKET
-  { ArrayExpr exprs }
+  { ArrayExpr (exprs, make_position $startpos) }
 | path = path LBRACE fields = struct_field_list RBRACE
-  { StructExpr (path, fields) }
+  { StructExpr (path, fields, make_position $startpos) }
 | IF cond = condition_expr then_block = block ELSE else_block = block %prec IF
-  { If (cond, then_block, Some else_block) }
+  { If (cond, then_block, Some else_block, make_position $startpos) }
 | MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE %prec MATCH
-  { Match (expr, arms) }
-| LOOP body = block { Loop body }
-| WHILE cond = condition_expr body = block %prec WHILE { While (cond, body) }
+  { Match (expr, arms, make_position $startpos) }
+| LOOP body = block { Loop (body, make_position $startpos) }
+| WHILE cond = condition_expr body = block %prec WHILE { While (cond, body, make_position $startpos) }
 | FOR var = IDENTIFIER IN iter = condition_expr body = block %prec FOR
-  { For (var, iter, body) }
-| RETURN expr = expression? { Return expr }
-| BREAK expr = expression? { Break expr }
-| CONTINUE { Continue }
+  { For (var, iter, body, make_position $startpos) }
+| RETURN expr = expression? { Return (expr, make_position $startpos) }
+| BREAK expr = expression? { Break (expr, make_position $startpos) }
+| CONTINUE { Continue (make_position $startpos) }
 
 else_clause:
 | ELSE block = block { block }
@@ -374,7 +393,7 @@ assign_op:
 (* Struct field initialization *)
 struct_field:
 | name = IDENTIFIER COLON expr = expression { (name, expr) }
-| name = IDENTIFIER { (name, Identifier name) }  (* Shorthand syntax *)
+| name = IDENTIFIER { (name, Identifier (name, make_position $startpos)) }  (* Shorthand syntax *)
 
 (* Match arms *)
 match_arm:
@@ -429,21 +448,21 @@ block_inner:
 (* IF statements without else clause - treated as statements *)
 if_statement:
 | IF cond = condition_expr then_block = block
-  { ExprStmt (If (cond, then_block, None)) }
+  { ExprStmt (If (cond, then_block, None, make_position $startpos)) }
 
 (* Condition expressions - handles identifiers explicitly to avoid conflicts *)
 condition_expr:
-| lit = literal { Literal lit }
-| id = IDENTIFIER { Identifier id }
+| lit = literal { Literal (lit, make_position $startpos) }
+| id = IDENTIFIER { Identifier (id, make_position $startpos) }
 | LPAREN e = expression RPAREN { e }
-| e1 = condition_expr op = binary_op e2 = condition_expr { BinaryOp (e1, op, e2) }
-| op = unary_op e = condition_expr { UnaryOp (op, e) }
+| e1 = condition_expr op = binary_op e2 = condition_expr { BinaryOp (e1, op, e2, make_position $startpos(op)) }
+| op = unary_op e = condition_expr { UnaryOp (op, e, make_position $startpos) }
 | func = condition_expr LPAREN args = separated_list(COMMA, expression) RPAREN
-  { FunctionCall (func, args) }
-| e = condition_expr DOT field = IDENTIFIER { FieldAccess (e, field) }
-| e1 = condition_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2) }
+  { FunctionCall (func, args, make_position $startpos) }
+| e = condition_expr DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
+| e1 = condition_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
 | LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
-  { ArrayExpr exprs }
+  { ArrayExpr (exprs, make_position $startpos) }
 
 (* Lists with optional trailing commas *)
 field_list:

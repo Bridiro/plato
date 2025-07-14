@@ -14,7 +14,7 @@ type span = {
 (* Error types *)
 type error_kind =
   | LexError of string
-  | ParseError of string
+  | ParseError of string  
   | SemanticError of string
   | TypeError of string
   | UnknownError of string
@@ -24,6 +24,11 @@ type error = {
   span : span;
   message : string;
 }
+
+(* Global source lines for context display *)
+let source_lines = ref [||]
+
+let set_source_lines lines = source_lines := lines
 
 (* Error creation functions *)
 let make_position line column offset =
@@ -63,28 +68,49 @@ let format_span span =
           span.start_pos.line span.start_pos.column
           span.end_pos.line span.end_pos.column
 
-let format_error error =
-  Printf.sprintf "%s: %s at %s\n%s"
-    (string_of_error_kind error.kind)
-    error.message
-    (format_span error.span)
-    ""
-
-(* Helper to show source context *)
-let show_error_context error source_lines =
+(* Enhanced error context display *)
+let show_error_with_context error =
   let line_num = error.span.start_pos.line in
   let col_num = error.span.start_pos.column in
+  let end_col = error.span.end_pos.column in
   
-  if line_num > 0 && line_num <= Array.length source_lines then
-    let line = source_lines.(line_num - 1) in
-    let pointer = String.make (max 0 (col_num - 1)) ' ' ^ "^" in
-    Printf.sprintf "%s\n%4d | %s\n     | %s"
-      (format_error error)
+  let error_header = Printf.sprintf "%s: %s at %s"
+    (string_of_error_kind error.kind)
+    error.message
+    (format_span error.span) in
+  
+  if line_num > 0 && line_num <= Array.length !source_lines then
+    let line = !source_lines.(line_num - 1) in
+    let line_len = String.length line in
+    let start_col = max 0 (col_num - 1) in
+    let end_col_adj = min line_len (if end_col > col_num then end_col - 1 else start_col) in
+    
+    (* Create pointer with underline for ranges *)
+    let pointer = if end_col_adj > start_col then
+      String.make start_col ' ' ^ 
+      String.make (end_col_adj - start_col + 1) '^'
+    else
+      String.make start_col ' ' ^ "^"
+    in
+    
+    Printf.sprintf "%s\n\n%4d | %s\n     | %s"
+      error_header
       line_num
       line
       pointer
   else
-    format_error error
+    error_header
+
+(* Legacy function for backward compatibility *)
+let show_error_context error source_lines_array =
+  let old_source = !source_lines in
+  source_lines := source_lines_array;
+  let result = show_error_with_context error in
+  source_lines := old_source;
+  result
+
+let format_error error =
+  show_error_with_context error
 
 (* Exception type for carrying position info *)
 exception CompilerError of error
@@ -108,4 +134,23 @@ let semantic_error ~filename ~line ~column ~offset message =
 let type_error ~filename ~line ~column ~offset message =
   let pos = make_position line column offset in
   let span = make_span pos pos filename in
+  CompilerError (make_error (TypeError message) span message)
+
+(* Enhanced error creation with spans *)
+let lex_error_span ~filename ~start_line ~start_col ~end_line ~end_col ~offset message =
+  let start_pos = make_position start_line start_col offset in
+  let end_pos = make_position end_line end_col (offset + (end_col - start_col)) in
+  let span = make_span start_pos end_pos filename in
+  CompilerError (make_error (LexError message) span message)
+
+let parse_error_span ~filename ~start_line ~start_col ~end_line ~end_col ~offset message =
+  let start_pos = make_position start_line start_col offset in
+  let end_pos = make_position end_line end_col (offset + (end_col - start_col)) in
+  let span = make_span start_pos end_pos filename in
+  CompilerError (make_error (ParseError message) span message)
+
+let type_error_span ~filename ~start_line ~start_col ~end_line ~end_col ~offset message =
+  let start_pos = make_position start_line start_col offset in
+  let end_pos = make_position end_line end_col (offset + (end_col - start_col)) in
+  let span = make_span start_pos end_pos filename in
   CompilerError (make_error (TypeError message) span message)

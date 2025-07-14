@@ -447,11 +447,23 @@ let last_token_position = ref (1, 1, 0) (* line, column, pos *)
 (* Menhir bridge - convert our lexer to work with Menhir's expectations *)
 let create_menhir_lexer input =
   let state = ref (create_lexer input) in
-  fun _lexbuf ->
+  fun lexbuf ->
     let old_state = !state in
     let (token, new_state) = next_token !state in
+    
     (* Update global position for error reporting *)
     last_token_position := (old_state.line, old_state.column, old_state.pos);
+    
+    (* CRITICAL: Update lexbuf position for Menhir *)
+    let pos = {
+      Lexing.pos_fname = lexbuf.Lexing.lex_curr_p.Lexing.pos_fname;
+      Lexing.pos_lnum = new_state.line;
+      Lexing.pos_bol = new_state.pos - (new_state.column - 1);
+      Lexing.pos_cnum = new_state.pos;
+    } in
+    lexbuf.Lexing.lex_curr_p <- pos;
+    lexbuf.Lexing.lex_start_p <- pos;
+    
     state := new_state;
     token
 
