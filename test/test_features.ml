@@ -29,7 +29,7 @@ let test_features () =
         let _ast = Plato.Parser.program lexer_fn lexbuf in
         Printf.printf "✓ Success\n"
       with
-      | Plato.Lexer.LexError err -> Printf.printf "✗ Lexer error: %s\n" err
+      | Plato.Lexer.LexError (err, line, column) -> Printf.printf "✗ Lexer error at %d:%d: %s\n" line column err
       | Plato.Parser.Error -> Printf.printf "✗ Parser error\n"
       | exn -> Printf.printf "✗ %s\n" (Printexc.to_string exn))
     tests

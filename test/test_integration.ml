@@ -32,8 +32,8 @@ let test_complete_programs () =
         Printf.printf "✓ %s\n" desc ;
         incr passed
       with
-      | Plato.Lexer.LexError err ->
-        Printf.printf "✗ %s (Lexer error: %s)\n" desc err
+      | Plato.Lexer.LexError (err, line, column) ->
+        Printf.printf "✗ %s (Lexer error at %d:%d: %s)\n" desc line column err
       | Plato.Parser.Error -> Printf.printf "✗ %s (Parser error)\n" desc
       | exn -> Printf.printf "✗ %s (Error: %s)\n" desc (Printexc.to_string exn))
     programs ;
@@ -69,8 +69,8 @@ let test_complex_features () =
         Printf.printf "✓ %s\n" desc ;
         incr passed
       with
-      | Plato.Lexer.LexError err ->
-        Printf.printf "✗ %s (Lexer error: %s)\n" desc err
+      | Plato.Lexer.LexError (err, line, column) ->
+        Printf.printf "✗ %s (Lexer error at %d:%d: %s)\n" desc line column err
       | Plato.Parser.Error -> Printf.printf "✗ %s (Parser error)\n" desc
       | exn -> Printf.printf "✗ %s (Error: %s)\n" desc (Printexc.to_string exn))
     complex_tests ;

@@ -54,15 +54,12 @@ let () =
   | Sys_error msg ->
     Printf.eprintf "File error: %s\n" msg ;
     exit 1
-  | Lexer.LexErrorWithPos (msg, line, column) ->
+  | Lexer.LexError (msg, line, column) ->
     let pos = Error.make_position line column 0 in
     let span = Error.make_span pos pos (Some !input_file) in
     let error = Error.make_error (Error.LexError msg) span msg in
     let _content, source_lines = read_file_with_lines !input_file in
     Printf.eprintf "%s\n" (Error.show_error_context error source_lines) ;
-    exit 1
-  | Lexer.LexError err ->
-    Printf.eprintf "Lexer error: %s\n" err ;
     exit 1
   | Error.CompilerError error ->
     let _content, source_lines = read_file_with_lines !input_file in

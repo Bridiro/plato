@@ -59,8 +59,8 @@ let test_success_cases () =
         Printf.printf "✓ %s: %s\n" desc code ;
         incr passed
       with
-      | Plato.Lexer.LexError err ->
-        Printf.printf "✗ %s: %s (Lexer error: %s)\n" desc code err
+      | Plato.Lexer.LexError (err, line, column) ->
+        Printf.printf "✗ %s: %s (Lexer error at %d:%d: %s)\n" desc code line column err
       | Plato.Parser.Error ->
         Printf.printf "✗ %s: %s (Parser error)\n" desc code
       | exn ->

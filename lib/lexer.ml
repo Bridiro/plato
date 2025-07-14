@@ -1,11 +1,8 @@
 open Ast
 open Parser
 
-(* Enhanced exception for lexer errors with position *)
-exception LexErrorWithPos of string * int * int
-
-(* Legacy exception for backward compatibility *)
-exception LexError of string
+(* Exception for lexer errors with position information *)
+exception LexError of string * int * int
 
 (* Use the parser's token type *)
 let keywords =
@@ -111,7 +108,7 @@ let create_lexer ?(filename = None) input =
 
 (* Position-aware error functions *)
 let lex_error_simple state message =
-  raise (LexErrorWithPos (message, state.line, state.column))
+  raise (LexError (message, state.line, state.column))
 
 let current_char state =
   if state.pos >= state.length then
