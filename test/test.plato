@@ -1,5 +1,5 @@
-let a: i32 = 3;
-let b: bool = true;
+const a: i32 = 3;
+const b: bool = true;
 
 enum Color {
     Red,
@@ -25,6 +25,8 @@ fn mul(x: i32, y: i32) -> i32 {
 fn main() -> i32 {
     let color = Color::Red;
     let p = Point::new(2, 3);
+    let arr = [1, 2, 3];
+    arr[1] = 4;
     if b {
         return mul(a, 2);
     }

@@ -35,6 +35,7 @@ let with_position startpos _endpos x =
 %token EOF
 
 (* Precedence and associativity *)
+%right ASSIGN PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN BIT_AND_ASSIGN BIT_OR_ASSIGN BIT_XOR_ASSIGN SHL_ASSIGN SHR_ASSIGN
 %left OR
 %left AND
 %left BIT_OR
@@ -421,6 +422,12 @@ pattern:
 (* Statements *)
 statement:
 | let_stmt = located(let_statement) { let (stmt, _pos) = let_stmt in stmt }
+| id = IDENTIFIER ASSIGN expr = expression SEMICOLON 
+  { AssignStmt (LvalueId id, Assign, expr) }
+| id = IDENTIFIER LBRACKET index = expression RBRACKET ASSIGN expr = expression SEMICOLON
+  { AssignStmt (LvalueIndex (LvalueId id, index), Assign, expr) }
+| id = IDENTIFIER DOT field = IDENTIFIER ASSIGN expr = expression SEMICOLON
+  { AssignStmt (LvalueField (LvalueId id, field), Assign, expr) }
 | assign_stmt = located(assign_statement) { let (stmt, _pos) = assign_stmt in stmt }
 | expr = expression SEMICOLON { ExprStmt expr }
 | item = item { ItemStmt item }
