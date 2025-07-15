@@ -1,8 +1,8 @@
-# Plato Compiler Development Roadmap
+# Eiron Compiler Development Roadmap
 
 ## Overview
 
-This document outlines the development roadmap for the Plato programming language compiler, from its current state to a production-ready compiler using LLVM as the backend. The roadmap is structured in phases, each building upon the previous one, with clear objectives, implementation strategies, and rationale.
+This document outlines the development roadmap for the Eiron programming language compiler, from its current state to a production-ready compiler using LLVM as the backend. The roadmap is structured in phases, each building upon the previous one, with clear objectives, implementation strategies, and rationale.
 
 ## Current State Assessment
 
@@ -120,9 +120,9 @@ opam install llvm dune
 
 # Update dune-project
 (executables
- (public_names plato)
+ (public_names eironc)
  (name main)
- (libraries plato llvm))
+ (libraries eiron llvm))
 ```
 
 **Tasks**:
@@ -177,7 +177,7 @@ end
 ## Phase 3: Core Language Features
 
 ### Objectives
-Implement all core Plato language features with proper LLVM code generation.
+Implement all core Eiron language features with proper LLVM code generation.
 
 ### 3.1 Function System
 
@@ -228,7 +228,7 @@ let codegen_function ctx func_def =
 ## Phase 4: Advanced Features
 
 ### Objectives
-Implement advanced language features that differentiate Plato from simple languages.
+Implement advanced language features that differentiate Eiron from simple languages.
 
 ### 4.1 Pattern Matching
 
@@ -406,4 +406,4 @@ Implement advanced compiler features that enable sophisticated development.
 
 ## Conclusion
 
-This roadmap provides a structured approach to building a production-ready Plato compiler. The phased approach ensures steady progress while maintaining code quality and allowing for course corrections based on feedback and learning. The use of LLVM as the backend provides access to state-of-the-art optimization and code generation capabilities, positioning Plato as a modern, performant language suitable for systems programming and application development.
+This roadmap provides a structured approach to building a production-ready Eiron compiler. The phased approach ensures steady progress while maintaining code quality and allowing for course corrections based on feedback and learning. The use of LLVM as the backend provides access to state-of-the-art optimization and code generation capabilities, positioning Eiron as a modern, performant language suitable for systems programming and application development.

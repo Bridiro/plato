@@ -1,8 +1,8 @@
-# Plato Language Extended Specification (Fixed)
+# Eiron Language Extended Specification (Fixed)
 
 ## 1. Introduction
 
-Plato is a statically typed, compiled systems programming language with Rust-inspired syntax but C-style semantics. It features strong static typing with type inference, manual memory management, and direct machine code generation without safety guarantees.
+Eiron is a statically typed, compiled systems programming language with Rust-inspired syntax but C-style semantics. It features strong static typing with type inference, manual memory management, and direct machine code generation without safety guarantees.
 
 ## 2. Lexical Structure
 
@@ -693,7 +693,7 @@ Low Memory
 
 ### 9.3 ABI Compatibility
 
-Plato uses C-compatible ABI for external function calls:
+Eiron uses C-compatible ABI for external function calls:
 - Functions follow platform calling conventions
 - Structs have C-compatible layout
 - Pointers are raw machine addresses
