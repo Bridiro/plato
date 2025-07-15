@@ -1,5 +1,3 @@
-(* Test Runner - Runs all tests and reports results for CI *)
-
 let run_test_executable name =
   let cmd =
     Printf.sprintf "cd %s && ./_build/default/test/%s.exe" (Sys.getcwd ()) name
@@ -18,6 +16,7 @@ let run_all_tests () =
       "test_integration";
       "test_features";
       "test_comprehensive";
+      "test_ir"
     ]
   in
 

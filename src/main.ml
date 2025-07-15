@@ -47,9 +47,14 @@ let () =
     (* Type check the program *)
     Eiron.Type_checker.type_check_program ast !input_file ;
 
+    (* Convert AST to IR *)
+    let ir_module = Eiron.Ast_to_ir.convert_ast_to_ir ast in
+
     (* For now, just print success and show the AST structure *)
     Printf.printf "✓ Successfully parsed and type-checked: %s\n" !input_file ;
-    Printf.printf "Program contains %d top-level items\n" (List.length ast)
+    Printf.printf "Program contains %d top-level items\n" (List.length ast) ;
+    Printf.printf "\n--- Generated IR ---\n" ;
+    Printf.printf "%s\n" (Eiron.Ir.string_of_ir_module ir_module)
   with
   | Sys_error msg ->
     Printf.eprintf "File error: %s\n" msg ;

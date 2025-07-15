@@ -2,7 +2,7 @@
  (name eiron)
  (public_name eiron)
  (libraries menhirLib)
- (modules ast error lexer parser type_checker)
+ (modules ast error lexer parser type_checker ir ast_to_ir)
  (preprocess (pps ppx_deriving.show))
  (flags (:standard -w -32-27)))
 
