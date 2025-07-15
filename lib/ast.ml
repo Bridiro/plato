@@ -121,6 +121,7 @@ and expression =
   | Return of expression option * position
   | Break of expression option * position
   | Continue of position
+  | Range of expression * expression * position
 
 and match_arm = MatchArm of pattern * expression
 
@@ -252,3 +253,4 @@ let get_expression_position = function
   | Return (_, pos) -> pos
   | Break (_, pos) -> pos
   | Continue pos -> pos
+  | Range (_, _, pos) -> pos

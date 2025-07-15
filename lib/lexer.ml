@@ -222,8 +222,12 @@ let read_number state =
     if base = 10 then
       match current_char after_int with
       | Some '.' ->
-        let after_dot = advance after_int in
-        (true, read_digits after_dot is_digit)
+        (* Check if next char is also '.' to handle ranges like 0..5 *)
+        (match peek_char after_int 1 with
+        | Some '.' -> (false, after_int)  (* This is a range operator, not a float *)
+        | _ ->
+          let after_dot = advance after_int in
+          (true, read_digits after_dot is_digit))
       | _ -> (false, after_int)
     else
       (false, after_int)
@@ -411,7 +415,6 @@ let next_token state =
     end
     | ',' -> (COMMA, advance state)
     | ';' -> (SEMICOLON, advance state)
-    | '?' -> (QUESTION, advance state)
     | '(' -> (LPAREN, advance state)
     | ')' -> (RPAREN, advance state)
     | '[' -> (LBRACKET, advance state)

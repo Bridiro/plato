@@ -30,12 +30,12 @@ let with_position startpos _endpos x =
 %token EQ NE LT GT LE GE AND OR NOT
 %token BIT_AND BIT_OR BIT_XOR SHL SHR
 %token BIT_AND_ASSIGN BIT_OR_ASSIGN BIT_XOR_ASSIGN SHL_ASSIGN SHR_ASSIGN
-%token ASSIGN ARROW FAT_ARROW DOT COMMA SEMICOLON COLON QUESTION DOTDOT DOUBLE_COLON UNDERSCORE
+%token ASSIGN ARROW FAT_ARROW DOT COMMA SEMICOLON COLON DOUBLE_COLON UNDERSCORE DOTDOT
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE
 %token EOF
 
 (* Precedence and associativity *)
-%right ASSIGN PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN BIT_AND_ASSIGN BIT_OR_ASSIGN BIT_XOR_ASSIGN SHL_ASSIGN SHR_ASSIGN
+%right ASSIGN
 %left OR
 %left AND
 %left BIT_OR
@@ -43,14 +43,14 @@ let with_position startpos _endpos x =
 %left BIT_AND
 %left EQ NE
 %left LT GT LE GE
+%left DOTDOT
 %left SHL SHR
 %left PLUS MINUS
 %left STAR SLASH PERCENT
-%right NOT NEG DEREF REF SIZEOF
+%right NOT
 %left DOT
 %left LBRACKET
 %left LPAREN
-%right IF WHILE FOR
 
 (* Start symbol *)
 %start program
@@ -65,9 +65,6 @@ let with_position startpos _endpos x =
 (* Enhanced positioned versions of key constructs *)
 %public %inline positioned_binary_op(OP):
 | op = OP { (op, make_position $startpos(op)) }
-
-%public %inline positioned_expression:
-| e = expression { (e, make_position $startpos $endpos) }
 
 (* Program *)
 program:
@@ -287,6 +284,7 @@ plato_type:
     )
     | _ -> PathType (path, generics)
   }
+| USIZE { PrimType Usize }
 | LBRACKET ty = plato_type SEMICOLON size = expression RBRACKET
   { ArrayType (ty, size) }
 | STAR ty = plato_type { PointerType ty }
@@ -329,20 +327,18 @@ expression:
   { ArrayExpr (exprs, make_position $startpos) }
 | path = path LBRACE fields = struct_field_list RBRACE
   { StructExpr (path, fields, make_position $startpos) }
-| IF cond = condition_expr then_block = block ELSE else_block = block %prec IF
+| IF cond = condition_expr then_block = block ELSE else_block = block
   { If (cond, then_block, Some else_block, make_position $startpos) }
-| MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE %prec MATCH
+| MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
   { Match (expr, arms, make_position $startpos) }
 | LOOP body = block { Loop (body, make_position $startpos) }
-| WHILE cond = condition_expr body = block %prec WHILE { While (cond, body, make_position $startpos) }
-| FOR var = IDENTIFIER IN iter = condition_expr body = block %prec FOR
+| WHILE cond = condition_expr body = block { While (cond, body, make_position $startpos) }
+| FOR var = IDENTIFIER IN iter = condition_expr body = block
   { For (var, iter, body, make_position $startpos) }
 | RETURN expr = expression? { Return (expr, make_position $startpos) }
 | BREAK expr = expression? { Break (expr, make_position $startpos) }
 | CONTINUE { Continue (make_position $startpos) }
-
-else_clause:
-| ELSE block = block { block }
+| e1 = expression DOTDOT e2 = expression { Range (e1, e2, make_position $startpos) }
 
 (* Literals *)
 literal:
@@ -379,9 +375,9 @@ binary_op:
 (* Unary operators *)
 unary_op:
 | NOT { Not }
-| MINUS %prec NEG { Neg }
-| STAR %prec DEREF { Deref }
-| BIT_AND %prec REF { Ref }
+| MINUS { Neg }
+| STAR { Deref }
+| BIT_AND { Ref }
 | SIZEOF { Sizeof }
 
 (* Assignment operators *)
@@ -465,11 +461,25 @@ block_inner:
 | expr = expression { ([], Some expr) }
 | if_stmt = if_statement inner = block_inner { let (stmts, expr) = inner in (if_stmt::stmts, expr) }
 | if_stmt = if_statement { ([if_stmt], None) }
+| for_stmt = for_statement inner = block_inner { let (stmts, expr) = inner in (for_stmt::stmts, expr) }
+| for_stmt = for_statement { ([for_stmt], None) }
+| while_stmt = while_statement inner = block_inner { let (stmts, expr) = inner in (while_stmt::stmts, expr) }
+| while_stmt = while_statement { ([while_stmt], None) }
 
 (* IF statements without else clause - treated as statements *)
 if_statement:
 | IF cond = condition_expr then_block = block
   { ExprStmt (If (cond, then_block, None, make_position $startpos)) }
+
+(* FOR statements - treated as statements *)
+for_statement:
+| FOR var = IDENTIFIER IN iter = condition_expr body = block
+  { ExprStmt (For (var, iter, body, make_position $startpos)) }
+
+(* WHILE statements - treated as statements *)
+while_statement:
+| WHILE cond = condition_expr body = block
+  { ExprStmt (While (cond, body, make_position $startpos)) }
 
 (* Condition expressions - handles identifiers explicitly to avoid conflicts *)
 condition_expr:
@@ -482,6 +492,7 @@ condition_expr:
   { FunctionCall (func, args, make_position $startpos) }
 | e = condition_expr DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
 | e1 = condition_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
+| e1 = condition_expr DOTDOT e2 = condition_expr { Range (e1, e2, make_position $startpos) }
 | LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
   { ArrayExpr (exprs, make_position $startpos) }
 

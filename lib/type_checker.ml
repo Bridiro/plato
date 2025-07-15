@@ -485,6 +485,17 @@ let rec check_expression env = function
     TUnit
   | Break (_expr_opt, _) -> TUnit
   | Continue _ -> TUnit
+  | Range (start, end_expr, _pos) ->
+    let start_type = check_expression env start in
+    let end_type = check_expression env end_expr in
+    (* Range expressions should have integer types *)
+    let start_norm = normalize_type start_type in
+    let end_norm = normalize_type end_type in
+    (match (start_norm, end_norm) with
+    | (TI32, TI32) -> TArray (TI32, None)  (* Return array type for ranges *)
+    | (TI64, TI64) -> TArray (TI64, None)
+    | (TUsize, TUsize) -> TArray (TUsize, None)
+    | _ -> type_error_at (get_expression_position start) "Range expressions require integer types")
 
 (* Type checking for blocks *)
 and check_block env (statements, expr_opt) =

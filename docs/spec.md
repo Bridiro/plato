@@ -57,7 +57,7 @@ Logical:    && || !
 Bitwise:    & | ^ << >> &= |= ^= <<= >>=
 Assignment: =
 Pointer:    * & ->
-Other:      :: . , ; : ? .. 
+Other:      :: . , ; : .. 
 Delimiters: ( ) [ ] { }
 ```
 
