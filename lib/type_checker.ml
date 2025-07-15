@@ -479,9 +479,15 @@ let rec check_expression env = function
   | Loop (body, _) ->
     ignore (check_block env body) ;
     TUnit
-  | For (_var, iter_expr, body, _pos) ->
-    ignore (check_expression env iter_expr) ;
-    ignore (check_block env body) ;
+  | For (var, iter_expr, body, _pos) ->
+    let iter_type = check_expression env iter_expr in
+    let iter_norm = normalize_type iter_type in
+    let var_type = (match iter_norm with
+      | TArray (elem_type, _) -> elem_type
+      | _ -> type_error_at (get_expression_position iter_expr) "For loop iterator must be an array type"
+    ) in
+    let new_env = add_variable env var var_type in
+    ignore (check_block new_env body) ;
     TUnit
   | Break (_expr_opt, _) -> TUnit
   | Continue _ -> TUnit
