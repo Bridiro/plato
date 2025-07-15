@@ -238,6 +238,28 @@ let rec expression_to_ir_value ctx = function
   | Ast.If (cond, then_block, else_block, _) ->
     (* If expressions should be handled at the statement level, not as expressions *)
     failwith "If expressions should be handled as statements, not expressions"
+  | Ast.While (cond, body, _) ->
+    (* While loops should be handled at the statement level, not expressions *)
+    failwith "While loops should be handled as statements, not expressions"
+  | Ast.For (var, iter, body, _) ->
+    (* For loops should be handled at the statement level, not expressions *)
+    failwith "For loops should be handled as statements, not expressions"
+  | Ast.Loop (body, _) ->
+    (* Loop constructs should be handled at the statement level, not expressions *)
+    failwith "Loop constructs should be handled as statements, not expressions"
+  | Ast.Match (expr, arms, _) ->
+    (* Match expressions should be handled at the statement level, not expressions *)
+    failwith "Match expressions should be handled as statements, not expressions"
+  | Ast.Range (start, end_expr, _) ->
+    (* Range expressions are used in for loops - convert to a simple structure *)
+    let start_ir = expression_to_ir_value ctx start in
+    let end_ir = expression_to_ir_value ctx end_expr in
+    (* For now, create a simple representation - this needs proper range handling *)
+    ArrayInit [start_ir; end_ir]
+  | Ast.Break (expr_opt, _) ->
+    failwith "Break statements should be handled at the statement level, not expressions"
+  | Ast.Continue _ ->
+    failwith "Continue statements should be handled at the statement level, not expressions"
   | Ast.Return (expr_opt, _) ->
     (match expr_opt with
     | Some expr -> expression_to_ir_value ctx expr

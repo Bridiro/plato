@@ -124,6 +124,47 @@ let ast_program_to_ir_module (program : Ast.program) : ir_module =
           (* This is a placeholder - proper basic block handling needs to be implemented *)
           let temp_name = generate_temp ctx in
           instructions := Assign (temp_name, Constant 0) :: !instructions
+        | For (var, iter_expr, body, _) ->
+          (* Convert for loop to basic loop structure *)
+          let iter_ir = expression_to_ir_value ctx iter_expr in
+          let loop_label = generate_label ctx "loop" in
+          
+          (* Initialize loop iterator *)
+          let temp_name = generate_temp ctx in
+          instructions := Assign (temp_name, iter_ir) :: !instructions;
+          instructions := Jump loop_label :: !instructions;
+          
+          (* For now, placeholder for loop body *)
+          let temp_name2 = generate_temp ctx in
+          instructions := Assign (temp_name2, Constant 0) :: !instructions
+        | While (cond, body, _) ->
+          (* Convert while loop to basic loop structure *)
+          let cond_ir = expression_to_ir_value ctx cond in
+          let loop_label = generate_label ctx "loop" in
+          
+          (* Placeholder for while loop *)
+          let temp_name = generate_temp ctx in
+          instructions := Assign (temp_name, cond_ir) :: !instructions;
+          instructions := Jump loop_label :: !instructions;
+          
+          let temp_name2 = generate_temp ctx in
+          instructions := Assign (temp_name2, Constant 0) :: !instructions
+        | Match (expr, cases, _) ->
+          (* Convert match expression to basic structure *)
+          let match_ir = expression_to_ir_value ctx expr in
+          
+          (* Placeholder for match handling *)
+          let temp_name = generate_temp ctx in
+          instructions := Assign (temp_name, match_ir) :: !instructions
+        | Loop (body, _) ->
+          (* Convert infinite loop to basic structure *)
+          let loop_label = generate_label ctx "loop" in
+          
+          (* Placeholder for loop body *)
+          instructions := Jump loop_label :: !instructions;
+          
+          let temp_name = generate_temp ctx in
+          instructions := Assign (temp_name, Constant 0) :: !instructions
         | _ ->
           let ir_value = expression_to_ir_value ctx expr in
           (* For other expression statements, we might need to generate a temporary *)

@@ -27,6 +27,9 @@ fn main() -> i32 {
     let p = Point::new(2, 3);
     let arr = [1, 2, 3];
     arr[1] = 4;
+    for i in 0..5 {
+        let t = i;
+    }
     if b {
         return mul(a, 2);
     }
