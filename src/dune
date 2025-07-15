@@ -1,6 +1,6 @@
 (executable
  (name main)
- (public_name plato)
- (package plato)
+ (public_name eironc)
+ (package eiron)
  (modules main)
- (libraries plato))
+ (libraries eiron))

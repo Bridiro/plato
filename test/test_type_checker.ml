@@ -35,14 +35,14 @@ let test_success_cases () =
   List.iter
     (fun (name, code) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        Lexing.set_filename lexbuf "test.plato" ;
-        let ast = Plato.Parser.program lexer_fn lexbuf in
-        Plato.Type_checker.type_check_program ast "test.plato" ;
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        Lexing.set_filename lexbuf "test.eiron" ;
+        let ast = Eiron.Parser.program lexer_fn lexbuf in
+        Eiron.Type_checker.type_check_program ast "test.eiron" ;
         Printf.printf "✓ %s\n" name
       with
-      | Plato.Error.CompilerError error ->
-        Printf.printf "✗ %s: %s\n" name (Plato.Error.format_error error)
+      | Eiron.Error.CompilerError error ->
+        Printf.printf "✗ %s: %s\n" name (Eiron.Error.format_error error)
       | exn -> Printf.printf "✗ %s: %s\n" name (Printexc.to_string exn))
     test_cases
 
@@ -80,18 +80,18 @@ let test_error_cases () =
   List.iter
     (fun (name, code, expected_error) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        Lexing.set_filename lexbuf "test.plato" ;
-        let ast = Plato.Parser.program lexer_fn lexbuf in
-        Plato.Type_checker.type_check_program ast "test.plato" ;
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        Lexing.set_filename lexbuf "test.eiron" ;
+        let ast = Eiron.Parser.program lexer_fn lexbuf in
+        Eiron.Type_checker.type_check_program ast "test.eiron" ;
         Printf.printf "✗ %s: Expected error but got success\n" name
       with
-      | Plato.Error.CompilerError error ->
-        if string_contains (Plato.Error.format_error error) expected_error then
+      | Eiron.Error.CompilerError error ->
+        if string_contains (Eiron.Error.format_error error) expected_error then
           Printf.printf "✓ %s (Failed as expected - Type)\n" name
         else
           Printf.printf "✗ %s: Got wrong error: %s\n" name
-            (Plato.Error.format_error error)
+            (Eiron.Error.format_error error)
       | exn ->
         let error_msg = Printexc.to_string exn in
         if string_contains error_msg expected_error then
@@ -117,14 +117,14 @@ let test_complex_programs () =
   List.iter
     (fun (name, code) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        Lexing.set_filename lexbuf "test.plato" ;
-        let ast = Plato.Parser.program lexer_fn lexbuf in
-        Plato.Type_checker.type_check_program ast "test.plato" ;
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        Lexing.set_filename lexbuf "test.eiron" ;
+        let ast = Eiron.Parser.program lexer_fn lexbuf in
+        Eiron.Type_checker.type_check_program ast "test.eiron" ;
         Printf.printf "✓ %s\n" name
       with
-      | Plato.Error.CompilerError error ->
-        Printf.printf "✗ %s: %s\n" name (Plato.Error.format_error error)
+      | Eiron.Error.CompilerError error ->
+        Printf.printf "✗ %s: %s\n" name (Eiron.Error.format_error error)
       | exn -> Printf.printf "✗ %s: %s\n" name (Printexc.to_string exn))
     test_cases
 

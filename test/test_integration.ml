@@ -27,14 +27,14 @@ let test_complete_programs () =
   List.iter
     (fun (code, desc) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        let _ast = Plato.Parser.program lexer_fn lexbuf in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        let _ast = Eiron.Parser.program lexer_fn lexbuf in
         Printf.printf "✓ %s\n" desc ;
         incr passed
       with
-      | Plato.Lexer.LexError (err, line, column) ->
+      | Eiron.Lexer.LexError (err, line, column) ->
         Printf.printf "✗ %s (Lexer error at %d:%d: %s)\n" desc line column err
-      | Plato.Parser.Error -> Printf.printf "✗ %s (Parser error)\n" desc
+      | Eiron.Parser.Error -> Printf.printf "✗ %s (Parser error)\n" desc
       | exn -> Printf.printf "✗ %s (Error: %s)\n" desc (Printexc.to_string exn))
     programs ;
 
@@ -64,14 +64,14 @@ let test_complex_features () =
   List.iter
     (fun (code, desc) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        let _ast = Plato.Parser.program lexer_fn lexbuf in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        let _ast = Eiron.Parser.program lexer_fn lexbuf in
         Printf.printf "✓ %s\n" desc ;
         incr passed
       with
-      | Plato.Lexer.LexError (err, line, column) ->
+      | Eiron.Lexer.LexError (err, line, column) ->
         Printf.printf "✗ %s (Lexer error at %d:%d: %s)\n" desc line column err
-      | Plato.Parser.Error -> Printf.printf "✗ %s (Parser error)\n" desc
+      | Eiron.Parser.Error -> Printf.printf "✗ %s (Parser error)\n" desc
       | exn -> Printf.printf "✗ %s (Error: %s)\n" desc (Printexc.to_string exn))
     complex_tests ;
 

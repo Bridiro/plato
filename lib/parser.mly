@@ -132,7 +132,7 @@ trait_def:
 
 (* Impl definition *)
 impl_def:
-| IMPL generics = generic_params? target = plato_type
+| IMPL generics = generic_params? target = eiron_type
   LBRACE items = impl_item* RBRACE
   {
     { impl_generics = (match generics with Some g -> g | None -> []);
@@ -140,7 +140,7 @@ impl_def:
       impl_type = target;
       impl_items = items }
   }
-| IMPL generics = generic_params? trait_path = path FOR target = plato_type
+| IMPL generics = generic_params? trait_path = path FOR target = eiron_type
   LBRACE items = impl_item* RBRACE
   {
     { impl_generics = (match generics with Some g -> g | None -> []);
@@ -168,14 +168,14 @@ global_let:
 (* Type alias *)
 type_alias:
 | vis = visibility TYPE name = IDENTIFIER generics = generic_params?
-  ASSIGN ty = plato_type SEMICOLON
+  ASSIGN ty = eiron_type SEMICOLON
   {
     TypeAlias (vis, name, (match generics with Some g -> g | None -> []), ty)
   }
 
 (* Helper rules for common patterns *)
 type_annotation:
-| COLON ty = plato_type { ty }
+| COLON ty = eiron_type { ty }
 
 bounds:
 | COLON bound_list = separated_list(PLUS, path) { bound_list }
@@ -212,7 +212,7 @@ generic_param:
 
 (* Field definition *)
 field_def:
-| vis = visibility name = IDENTIFIER COLON ty = plato_type
+| vis = visibility name = IDENTIFIER COLON ty = eiron_type
   {
     { field_vis = vis;
       field_name = name;
@@ -236,12 +236,12 @@ variant_value:
 
 (* Parameter *)
 param:
-| name = IDENTIFIER COLON ty = plato_type
+| name = IDENTIFIER COLON ty = eiron_type
   {
     { param_name = name;
       param_type = ty }
   }
-| SELF COLON ty = plato_type
+| SELF COLON ty = eiron_type
   {
     { param_name = "self";
       param_type = ty }
@@ -249,7 +249,7 @@ param:
 
 (* Return type *)
 return_type:
-| ARROW ty = plato_type { ty }
+| ARROW ty = eiron_type { ty }
 
 (* Trait item *)
 trait_item:
@@ -265,11 +265,11 @@ trait_item:
 (* Impl item *)
 impl_item:
 | func = function_def { ImplFunction func }
-| TYPE name = IDENTIFIER ASSIGN ty = plato_type SEMICOLON
+| TYPE name = IDENTIFIER ASSIGN ty = eiron_type SEMICOLON
   { ImplTypeAlias (name, ty) }
 
 (* Types *)
-plato_type:
+eiron_type:
 | path = path generics = type_generics?
   { 
     (* Convert single-identifier primitive types to PrimType *)
@@ -285,15 +285,15 @@ plato_type:
     | _ -> PathType (path, generics)
   }
 | USIZE { PrimType Usize }
-| LBRACKET ty = plato_type SEMICOLON size = expression RBRACKET
+| LBRACKET ty = eiron_type SEMICOLON size = expression RBRACKET
   { ArrayType (ty, size) }
-| STAR ty = plato_type { PointerType ty }
-| FN LPAREN params = separated_list(COMMA, plato_type) RPAREN
+| STAR ty = eiron_type { PointerType ty }
+| FN LPAREN params = separated_list(COMMA, eiron_type) RPAREN
   return_type = return_type?
   { FunctionType (params, return_type) }
 
 type_generics:
-| LT types = separated_list(COMMA, plato_type) GT { types }
+| LT types = separated_list(COMMA, eiron_type) GT { types }
 
 (* Path *)
 path:
@@ -317,7 +317,7 @@ expression:
 | e = simple_expression { e }
 | e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2, make_position $startpos(op)) }
 | op = unary_op e = expression %prec NOT { UnaryOp (op, e, make_position $startpos) }
-| e = expression AS ty = plato_type { Cast (e, ty, make_position $startpos) }
+| e = expression AS ty = eiron_type { Cast (e, ty, make_position $startpos) }
 | e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
 | e = expression DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
 | e = expression ARROW field = IDENTIFIER { PointerAccess (e, field, make_position $startpos) }
@@ -529,8 +529,8 @@ param_list:
 
 type_list:
 | (* empty *) { [] }
-| ty = plato_type { [ty] }
-| ty = plato_type COMMA { [ty] }
-| ty = plato_type COMMA rest = type_list { ty :: rest }
+| ty = eiron_type { [ty] }
+| ty = eiron_type COMMA { [ty] }
+| ty = eiron_type COMMA rest = type_list { ty :: rest }
 
 %%

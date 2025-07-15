@@ -1,34 +1,34 @@
 (executable
  (name test_lexer)
  (modules test_lexer)
- (libraries plato))
+ (libraries eiron))
 
 (executable
  (name test_parser)
  (modules test_parser)
- (libraries plato))
+ (libraries eiron))
 
 (executable
  (name test_type_checker)
  (modules test_type_checker)
- (libraries plato))
+ (libraries eiron))
 
 (executable
  (name test_features)
  (modules test_features)
- (libraries plato))
+ (libraries eiron))
 
 (executable
  (name test_comprehensive)
  (modules test_comprehensive)
- (libraries plato))
+ (libraries eiron))
 
 (executable
  (name test_integration)
  (modules test_integration)
- (libraries plato))
+ (libraries eiron))
 
 (executable
  (name run_all_tests)
  (modules run_all_tests)
- (libraries plato))
+ (libraries eiron))

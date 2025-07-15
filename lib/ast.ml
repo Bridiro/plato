@@ -51,12 +51,12 @@ type primitive_type =
   | Str
   | Void
 
-type plato_type =
+type eiron_type =
   | PrimType of primitive_type
-  | ArrayType of plato_type * expression
-  | PointerType of plato_type
-  | FunctionType of plato_type list * plato_type option
-  | PathType of path * plato_type list option
+  | ArrayType of eiron_type * expression
+  | PointerType of eiron_type
+  | FunctionType of eiron_type list * eiron_type option
+  | PathType of path * eiron_type list option
   | GenericType of string
 
 and binary_op =
@@ -105,7 +105,7 @@ and expression =
   | PathExpr of path * position
   | BinaryOp of expression * binary_op * expression * position
   | UnaryOp of unary_op * expression * position
-  | Cast of expression * plato_type * position
+  | Cast of expression * eiron_type * position
   | Index of expression * expression * position
   | FieldAccess of expression * string * position
   | PointerAccess of expression * string * position
@@ -133,7 +133,7 @@ and pattern =
   | TuplePattern of pattern list
 
 and statement =
-  | LetStmt of bool * string * plato_type option * expression option
+  | LetStmt of bool * string * eiron_type option * expression option
   | AssignStmt of lvalue * assign_op * expression
   | ExprStmt of expression
   | ItemStmt of item
@@ -156,18 +156,18 @@ and generic_param = string * path list option
 and field_def = {
   field_vis : visibility;
   field_name : string;
-  field_type : plato_type;
+  field_type : eiron_type;
 }
 
 and enum_variant = {
   variant_name : string;
-  variant_data : plato_type list option;
+  variant_data : eiron_type list option;
   variant_value : int option;
 }
 
 and param = {
   param_name : string;
-  param_type : plato_type;
+  param_type : eiron_type;
 }
 
 and function_def = {
@@ -175,7 +175,7 @@ and function_def = {
   func_name : string;
   func_generics : generic_param list;
   func_params : param list;
-  func_return : plato_type option;
+  func_return : eiron_type option;
   func_body : block;
 }
 
@@ -195,7 +195,7 @@ and enum_def = {
 
 and trait_item =
   | TraitFunction of
-      string * generic_param list * param list * plato_type option
+      string * generic_param list * param list * eiron_type option
   | AssociatedType of string * path list option
 
 and trait_def = {
@@ -207,12 +207,12 @@ and trait_def = {
 
 and impl_item =
   | ImplFunction of function_def
-  | ImplTypeAlias of string * plato_type
+  | ImplTypeAlias of string * eiron_type
 
 and impl_def = {
   impl_generics : generic_param list;
   impl_trait : path option;
-  impl_type : plato_type;
+  impl_type : eiron_type;
   impl_items : impl_item list;
 }
 
@@ -223,8 +223,8 @@ and item =
   | Trait of trait_def
   | Impl of impl_def
   | GlobalVar of
-      visibility * bool * bool * string * plato_type option * expression
-  | TypeAlias of visibility * string * generic_param list * plato_type
+      visibility * bool * bool * string * eiron_type option * expression
+  | TypeAlias of visibility * string * generic_param list * eiron_type
   | Use of visibility * path
   | Mod of visibility * string * item list option
 

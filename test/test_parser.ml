@@ -54,14 +54,14 @@ let test_success_cases () =
   List.iter
     (fun (code, desc) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        let _ast = Plato.Parser.program lexer_fn lexbuf in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        let _ast = Eiron.Parser.program lexer_fn lexbuf in
         Printf.printf "✓ %s: %s\n" desc code ;
         incr passed
       with
-      | Plato.Lexer.LexError (err, line, column) ->
+      | Eiron.Lexer.LexError (err, line, column) ->
         Printf.printf "✗ %s: %s (Lexer error at %d:%d: %s)\n" desc code line column err
-      | Plato.Parser.Error ->
+      | Eiron.Parser.Error ->
         Printf.printf "✗ %s: %s (Parser error)\n" desc code
       | exn ->
         Printf.printf "✗ %s: %s (Error: %s)\n" desc code
@@ -91,14 +91,14 @@ let test_error_cases () =
   List.iter
     (fun (code, desc) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string code in
-        let _ast = Plato.Parser.program lexer_fn lexbuf in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string code in
+        let _ast = Eiron.Parser.program lexer_fn lexbuf in
         Printf.printf "✗ %s: %s (Should have failed but didn't)\n" desc code
       with
-      | Plato.Lexer.LexError _ ->
+      | Eiron.Lexer.LexError _ ->
         Printf.printf "✓ %s: %s (Failed as expected - Lexer)\n" desc code ;
         incr failed_correctly
-      | Plato.Parser.Error ->
+      | Eiron.Parser.Error ->
         Printf.printf "✓ %s: %s (Failed as expected - Parser)\n" desc code ;
         incr failed_correctly
       | exn ->

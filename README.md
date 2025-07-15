@@ -1,6 +1,6 @@
-# Plato
+# Eiron
 
-**Plato** is a minimal, statically-typed, compiled programming language designed to be fast, safe, and simple. It is an educational and experimental language project, aiming to explore compiler design, type systems, and low-level code generation.
+**Eiron** is a minimal, statically-typed, compiled programming language designed to be fast, safe, and simple. It is an educational and experimental language project, aiming to explore compiler design, type systems, and low-level code generation.
 
 ## Goals
 
@@ -18,7 +18,7 @@ You need [OCaml](https://ocaml.org) and [Dune](https://dune.build) installed.
 dune build
 ```
 
-This will produce the `plato` compiler binary in `_build/default/src/main.exe`.
+This will produce the `eironc` compiler binary in `_build/default/src/main.exe`.
 
 To install it globally (inside your opam sandbox):
 
@@ -30,7 +30,7 @@ dune install
 
 Contributions are welcome! Feel free to open issues, suggest features, or submit pull requests.
 
-Whether you're interested in language design, compiler internals, or want to build tools for Plato — you're invited to help shape the project.
+Whether you're interested in language design, compiler internals, or want to build tools for Eiron — you're invited to help shape the project.
 
 ## Project Structure
 

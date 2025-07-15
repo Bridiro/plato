@@ -25,12 +25,12 @@ let test_features () =
     (fun i test ->
       Printf.printf "Feature %d: " (i + 1) ;
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string test in
-        let _ast = Plato.Parser.program lexer_fn lexbuf in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string test in
+        let _ast = Eiron.Parser.program lexer_fn lexbuf in
         Printf.printf "✓ Success\n"
       with
-      | Plato.Lexer.LexError (err, line, column) -> Printf.printf "✗ Lexer error at %d:%d: %s\n" line column err
-      | Plato.Parser.Error -> Printf.printf "✗ Parser error\n"
+      | Eiron.Lexer.LexError (err, line, column) -> Printf.printf "✗ Lexer error at %d:%d: %s\n" line column err
+      | Eiron.Parser.Error -> Printf.printf "✗ Parser error\n"
       | exn -> Printf.printf "✗ %s\n" (Printexc.to_string exn))
     tests
 

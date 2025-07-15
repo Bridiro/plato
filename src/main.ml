@@ -1,6 +1,6 @@
-open Plato
+open Eiron
 
-let usage_msg = "plato <file>"
+let usage_msg = "eironc <file>"
 let input_file = ref ""
 let set_input_file filename = input_file := filename
 let spec_list = []
@@ -45,7 +45,7 @@ let () =
     let ast = parse_with_error_reporting content !input_file in
 
     (* Type check the program *)
-    Plato.Type_checker.type_check_program ast !input_file ;
+    Eiron.Type_checker.type_check_program ast !input_file ;
 
     (* For now, just print success and show the AST structure *)
     Printf.printf "✓ Successfully parsed and type-checked: %s\n" !input_file ;

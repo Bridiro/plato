@@ -27,7 +27,7 @@ let test_keywords () =
   List.iter
     (fun (word, expected) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string word in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string word in
         let _token = lexer_fn lexbuf in
         Printf.printf "✓ Keyword '%s' -> %s\n" word expected
       with exn ->
@@ -63,7 +63,7 @@ let test_operators () =
   List.iter
     (fun (op, expected) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string op in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string op in
         let _token = lexer_fn lexbuf in
         Printf.printf "✓ Operator '%s' -> %s\n" op expected
       with exn ->
@@ -85,7 +85,7 @@ let test_literals () =
   List.iter
     (fun (lit, expected) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string lit in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string lit in
         let _token = lexer_fn lexbuf in
         Printf.printf "✓ Literal '%s' -> %s\n" lit expected
       with exn ->
@@ -105,7 +105,7 @@ let test_identifiers () =
   List.iter
     (fun (id, expected) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string id in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string id in
         let _token = lexer_fn lexbuf in
         Printf.printf "✓ Identifier '%s' -> %s\n" id expected
       with exn ->
@@ -126,12 +126,12 @@ let test_complex_expressions () =
   List.iter
     (fun (expr, desc) ->
       try
-        let lexer_fn, lexbuf = Plato.Lexer.parse_string expr in
+        let lexer_fn, lexbuf = Eiron.Lexer.parse_string expr in
         let rec count_tokens acc =
           try
             let token = lexer_fn lexbuf in
             match token with
-            | Plato.Parser.EOF -> acc
+            | Eiron.Parser.EOF -> acc
             | _ -> count_tokens (acc + 1)
           with _ -> acc
         in

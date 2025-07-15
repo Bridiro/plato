@@ -68,7 +68,7 @@ end
 module SymbolTable = struct
   type symbol_info = {
     name: string;
-    symbol_type: Ast.plato_type;
+    symbol_type: Ast.eiron_type;
     scope_level: int;
     is_mutable: bool;
     location: Error.position;

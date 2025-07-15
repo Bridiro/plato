@@ -1,6 +1,6 @@
 (library
- (name plato)
- (public_name plato)
+ (name eiron)
+ (public_name eiron)
  (libraries menhirLib)
  (modules ast error lexer parser type_checker)
  (preprocess (pps ppx_deriving.show))

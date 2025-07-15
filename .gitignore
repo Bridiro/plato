@@ -11,8 +11,8 @@
 /.opam-switch/
 
 # Dune-generated opam files (if using generate_opam_files)
-plato.install
-plato.opam
+eiron.install
+eiron.opam
 
 # Merlin/Editor metadata
 /.merlin
@@ -42,4 +42,4 @@ Thumbs.db
 /test/*.output
 /test/*.tmp
 
-plato
+eironc

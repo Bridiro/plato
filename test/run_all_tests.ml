@@ -8,7 +8,7 @@ let run_test_executable name =
   (name, exit_code = 0)
 
 let run_all_tests () =
-  Printf.printf "=== PLATO LANGUAGE TEST SUITE ===\n\n" ;
+  Printf.printf "=== EIRON LANGUAGE TEST SUITE ===\n\n" ;
 
   let tests =
     [
