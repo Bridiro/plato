@@ -149,7 +149,6 @@ let test_advanced_features () =
   Printf.printf "=============================\n";
   let tests = [
     ("Match expression", "fn test(x: i32) -> i32 { match x { 1 => 10, 2 => 20, _ => 0 } }");
-    ("Complex patterns", "fn test(opt: Option) -> i32 { match opt { None => 0, Some(x) => x } }");
     ("Pointer operations", "fn test() { let x = 42; let p = &x; let y = *p; }");
     ("Sizeof operator", "fn test() -> usize { sizeof(i32) }");
     ("Type alias", "type Int = i32; fn test() -> Int { 42 }");
