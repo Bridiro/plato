@@ -19,6 +19,11 @@
  (libraries eiron))
 
 (executable
+ (name test_comprehensive_ir)
+ (modules test_comprehensive_ir)
+ (libraries eiron))
+
+(executable
  (name test_features)
  (modules test_features)
  (libraries eiron))

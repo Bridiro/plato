@@ -14,6 +14,8 @@ type conversion_context = {
   (* Control flow context *)
   mutable break_label: string option;
   mutable continue_label: string option;
+  (* Continuation context - where control should flow after current construct *)
+  mutable continuation_label: string option;
 }
 
 let create_conversion_context () = {
@@ -25,6 +27,7 @@ let create_conversion_context () = {
   locals = []; (* Start with empty locals *)
   break_label = None;
   continue_label = None;
+  continuation_label = None;
 }
 
 (* Generate unique labels and temps *)
@@ -273,6 +276,36 @@ and convert_expression_statement_to_blocks ctx = function
   | Loop (body, _) ->
     convert_loop_to_blocks ctx body
   
+  | Return (expr_opt, _) ->
+    (* Return statements should generate Return instructions *)
+    (match expr_opt with
+    | Some expr -> [Return (Some (expression_to_ir_value ctx expr))]
+    | None -> [Return None])
+  
+  | Break (expr_opt, _) ->
+    (* Break statements should jump to break label *)
+    (match ctx.break_label with
+    | Some label -> [Jump label]
+    | None -> 
+      (* No break context - for now generate temp assignment *)
+      match expr_opt with
+      | Some expr ->
+        let ir_value = expression_to_ir_value ctx expr in
+        let temp_name = generate_temp ctx in
+        [Assign (temp_name, ir_value)]
+      | None ->
+        let temp_name = generate_temp ctx in
+        [Assign (temp_name, Constant 0)])
+  
+  | Continue _ ->
+    (* Continue statements should jump to continue label *)
+    (match ctx.continue_label with
+    | Some label -> [Jump label]
+    | None ->
+      (* No continue context - for now generate temp assignment *)
+      let temp_name = generate_temp ctx in
+      [Assign (temp_name, Constant 0)])
+  
   | expr ->
     (* For other expressions, just evaluate and assign to temp *)
     let ir_value = expression_to_ir_value ctx expr in
@@ -297,8 +330,19 @@ and convert_if_to_blocks ctx cond then_block else_block =
     | None -> []
   in
   pop_scope ctx;
-  let then_block_ir = create_block_with_terminator then_label 
-    (then_instructions @ then_final_instructions) (Jump merge_label) in
+  
+  (* Check if then block already has control flow (like break/continue/return) *)
+  let then_has_terminator = List.exists (function
+    | Jump _ | Return _ | Branch _ -> true
+    | _ -> false
+  ) (then_instructions @ then_final_instructions) in
+  
+  let then_block_ir = if then_has_terminator then
+    (* Don't add merge jump if block already has terminator *)
+    { label = then_label; instructions = then_instructions @ then_final_instructions }
+  else
+    create_block_with_terminator then_label 
+      (then_instructions @ then_final_instructions) (Jump merge_label) in
   add_block ctx then_block_ir;
   
   (* Create else block *)
@@ -313,15 +357,28 @@ and convert_if_to_blocks ctx cond then_block else_block =
         | None -> []
       in
       pop_scope ctx;
-      create_block_with_terminator else_label 
-        (else_instructions @ else_final_instructions) (Jump merge_label)
+      
+      (* Check if else block already has control flow *)
+      let else_has_terminator = List.exists (function
+        | Jump _ | Return _ | Branch _ -> true
+        | _ -> false
+      ) (else_instructions @ else_final_instructions) in
+      
+      if else_has_terminator then
+        { label = else_label; instructions = else_instructions @ else_final_instructions }
+      else
+        create_block_with_terminator else_label 
+          (else_instructions @ else_final_instructions) (Jump merge_label)
     | None ->
       create_block_with_terminator else_label [] (Jump merge_label)
   in
   add_block ctx else_block_ir;
   
   (* Create merge block *)
-  let merge_block = create_empty_block merge_label in
+  let merge_block = match ctx.continuation_label with
+    | Some cont_label -> create_block_with_terminator merge_label [] (Jump cont_label)
+    | None -> create_empty_block merge_label
+  in
   add_block ctx merge_block;
   
   (* Return the branch instruction for the current block *)
@@ -369,8 +426,10 @@ and convert_for_to_blocks ctx var iter_expr body =
   push_scope ctx;
   let old_continue = ctx.continue_label in
   let old_break = ctx.break_label in
+  let old_continuation = ctx.continuation_label in
   ctx.continue_label <- Some update_label;
   ctx.break_label <- Some exit_label;
+  ctx.continuation_label <- Some update_label; (* Default continuation after statements *)
   
   let (body_stmts, body_final) = body in
   let body_instructions = List.concat_map (convert_statement_to_blocks ctx) body_stmts in
@@ -383,10 +442,20 @@ and convert_for_to_blocks ctx var iter_expr body =
   
   ctx.continue_label <- old_continue;
   ctx.break_label <- old_break;
+  ctx.continuation_label <- old_continuation;
   pop_scope ctx;
   
-  let body_block = create_block_with_terminator body_label 
-    (body_instructions @ body_final_instructions) (Jump update_label) in
+  (* Check if body already has control flow terminator *)
+  let body_has_terminator = List.exists (function
+    | Jump _ | Return _ | Branch _ -> true
+    | _ -> false
+  ) (body_instructions @ body_final_instructions) in
+  
+  let body_block = if body_has_terminator then
+    { label = body_label; instructions = body_instructions @ body_final_instructions }
+  else
+    create_block_with_terminator body_label 
+      (body_instructions @ body_final_instructions) (Jump update_label) in
   add_block ctx body_block;
   
   (* Create update block *)
@@ -506,17 +575,21 @@ let convert_function ctx func_def =
     (* If we got control flow instructions (like Jump), mark that we have control flow *)
     List.iter (function
       | Jump _ | Branch _ -> has_control_flow := true
+      | Return _ -> has_control_flow := true (* Return statements also count as control flow *)
       | _ -> ()
     ) stmt_instructions;
     entry_instructions := !entry_instructions @ stmt_instructions
   ) statements;
   
-  (* Handle final expression - avoid double processing control flow *)
+  (* Handle final expression *)
   let final_instructions = match final_expr with
     | Some expr ->
       (match expr with
-      | For _ | While _ | Loop _ | If _ when !has_control_flow -> 
-        (* Control flow expressions that were processed as statements don't need return *)
+      | For _ | While _ | Loop _ | If _ -> 
+        (* Control flow expressions: process them and don't add return *)
+        let control_instructions = convert_expression_statement_to_blocks ctx expr in
+        entry_instructions := !entry_instructions @ control_instructions;
+        has_control_flow := true;
         []
       | _ ->
         let ir_value = expression_to_ir_value ctx expr in
