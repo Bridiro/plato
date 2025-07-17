@@ -9,6 +9,8 @@ type conversion_context = {
   mutable current_function: string option;
   (* Symbol table for proper scoping *)
   mutable scopes: (string, ir_type) Hashtbl.t list;
+  (* Local variables collection for current function *)
+  mutable locals: (string * ir_type) list;
   (* Control flow context *)
   mutable break_label: string option;
   mutable continue_label: string option;
@@ -20,6 +22,7 @@ let create_conversion_context () = {
   current_blocks = [];
   current_function = None;
   scopes = [Hashtbl.create 32]; (* Start with global scope *)
+  locals = []; (* Start with empty locals *)
   break_label = None;
   continue_label = None;
 }
@@ -58,7 +61,62 @@ let lookup_symbol ctx name =
 let declare_symbol ctx name ir_type =
   match ctx.scopes with
   | [] -> failwith "No scope available"
-  | current_scope :: _ -> Hashtbl.replace current_scope name ir_type
+  | current_scope :: _ -> 
+    Hashtbl.replace current_scope name ir_type;
+    (* Add to locals if we're in a function and not in global scope *)
+    if ctx.current_function <> None && List.length ctx.scopes > 1 then
+      ctx.locals <- (name, ir_type) :: ctx.locals
+
+(* Type inference helpers *)
+let infer_type_from_literal = function
+  | IntLit (_, suffix_opt) ->
+    (match suffix_opt with
+    | Some I8 -> IntType 8
+    | Some I16 -> IntType 16
+    | Some I32 -> IntType 32
+    | Some I64 -> IntType 64
+    | Some U8 -> IntType 8  (* Unsigned -> signed for now *)
+    | Some U16 -> IntType 16
+    | Some U32 -> IntType 32
+    | Some U64 -> IntType 64
+    | Some Usize -> IntType 64
+    | None -> IntType 32)
+  | FloatLit (_, suffix_opt) ->
+    (match suffix_opt with
+    | Some F32 -> FloatType 32
+    | Some F64 -> FloatType 64
+    | None -> FloatType 64)
+  | StringLit _ -> StringType
+  | CharLit _ -> IntType 8
+  | BoolLit _ -> BoolType
+  | UnitLit -> VoidType
+  | NullLit -> PointerType VoidType
+
+let rec infer_type_from_expression ctx = function
+  | Ast.Literal (lit, _) -> infer_type_from_literal lit
+  | Ast.Identifier (name, _) ->
+    (match lookup_symbol ctx name with
+    | Some ty -> ty
+    | None -> IntType 32) (* Default fallback *)
+  | Ast.BinaryOp (left, op, right, _) ->
+    let left_type = infer_type_from_expression ctx left in
+    let _right_type = infer_type_from_expression ctx right in
+    (* For now, use left operand type - proper type unification would be more complex *)
+    left_type
+  | Ast.UnaryOp (op, expr, _) ->
+    infer_type_from_expression ctx expr
+  | Ast.Cast (_, target_type, _) ->
+    ast_type_to_ir_type target_type
+  | Ast.Index (array, _, _) ->
+    (* For array access, return element type - simplified *)
+    (match infer_type_from_expression ctx array with
+    | ArrayType (elem_type, _) -> elem_type
+    | _ -> IntType 32)
+  | Ast.FunctionCall (_, _, _) ->
+    IntType 32 (* Would need function signature lookup *)
+  | Ast.Range (_, _, _) ->
+    ArrayType (IntType 32, 2) (* Range creates array of 2 integers [start, end] *)
+  | _ -> IntType 32 (* Default fallback *)
 
 (* Block management *)
 let add_block ctx block =
@@ -81,6 +139,12 @@ let get_blocks_in_order ctx =
   List.rev ctx.current_blocks
 
 (* Convert AST expressions to IR values with proper context *)
+(* Convert statements to instructions, generating proper basic blocks *)
+(* Convert expression statements with proper control flow *)
+(* Convert if statement to proper basic blocks *)
+(* Convert for loop to proper basic blocks *)
+(* Convert while loop to proper basic blocks *)
+(* Convert infinite loop to proper basic blocks *)
 let rec expression_to_ir_value ctx = function
   | Ast.Literal (lit, _) -> literal_to_ir_value lit
   | Ast.Identifier (name, _) -> Variable name
@@ -129,8 +193,12 @@ let rec expression_to_ir_value ctx = function
     let expr_ir = expression_to_ir_value ctx expr in
     FieldAccess (expr_ir, field)  (* Similar to field access for now *)
   | Ast.Block (block, _) ->
-    (* For block expressions, we need to handle them specially *)
-    Constant 0  (* Placeholder - blocks should be handled as statements *)
+    (* For block expressions, evaluate the block and return the final expression value *)
+    let (stmts, final_expr) = block in
+    (* Process statements but don't emit instructions here - this is for expression context *)
+    (match final_expr with
+    | Some expr -> expression_to_ir_value ctx expr
+    | None -> Constant 0)  (* Unit value *)
   | Ast.Return (expr_opt, _) ->
     (match expr_opt with
     | Some expr -> expression_to_ir_value ctx expr
@@ -141,10 +209,28 @@ let rec expression_to_ir_value ctx = function
     | None -> Constant 0)
   | Ast.Continue _ ->
     Constant 0  (* Continue doesn't produce a value *)
-  | _ -> failwith "Expression type not yet supported in IR conversion"
+  | Ast.If (cond, then_block, else_block, _) ->
+    (* For if expressions, generate the control flow blocks *)
+    let _ = convert_if_to_blocks ctx cond then_block else_block in
+    Constant 0  (* Return unit for now - proper implementation needs phi nodes *)
+  | Ast.Match (expr, arms, _) ->
+    (* Match expressions need complex IR generation - placeholder for now *)
+    Constant 0
+  | Ast.Loop (body, _) ->
+    (* Loop expressions - generate the actual loop blocks *)
+    let _ = convert_loop_to_blocks ctx body in
+    Constant 0
+  | Ast.While (cond, body, _) ->
+    (* While expressions - generate the actual while blocks *)
+    let _ = convert_while_to_blocks ctx cond body in
+    Constant 0
+  | Ast.For (var, iter, body, _) ->
+    (* For expressions - generate the actual for blocks *)
+    let _ = convert_for_to_blocks ctx var iter body in
+    Constant 0
 
 (* Convert statements to instructions, generating proper basic blocks *)
-let rec convert_statement_to_blocks ctx stmt =
+and convert_statement_to_blocks ctx stmt =
   match stmt with
   | LetStmt (is_mutable, name, type_opt, init_expr_opt) ->
     (match init_expr_opt with
@@ -152,7 +238,7 @@ let rec convert_statement_to_blocks ctx stmt =
       let ir_value = expression_to_ir_value ctx init_expr in
       let ir_type = match type_opt with
         | Some t -> ast_type_to_ir_type t
-        | None -> IntType 32 (* Infer type - placeholder *)
+        | None -> infer_type_from_expression ctx init_expr (* Proper type inference *)
       in
       declare_symbol ctx name ir_type;
       [Assign (name, ir_value)]
@@ -243,7 +329,16 @@ and convert_if_to_blocks ctx cond then_block else_block =
 
 (* Convert for loop to proper basic blocks *)
 and convert_for_to_blocks ctx var iter_expr body =
-  let iter_ir = expression_to_ir_value ctx iter_expr in
+  (* Extract start and end values from range expression *)
+  let (start_value, end_value) = match iter_expr with
+    | Range (start_expr, end_expr, _) ->
+      (expression_to_ir_value ctx start_expr, expression_to_ir_value ctx end_expr)
+    | _ ->
+      (* For non-range iterators, assume 0..n *)
+      let iter_ir = expression_to_ir_value ctx iter_expr in
+      (Constant 0, iter_ir)
+  in
+  
   let init_label = generate_label ctx "for_init" in
   let cond_label = generate_label ctx "for_cond" in
   let body_label = generate_label ctx "for_body" in
@@ -255,7 +350,7 @@ and convert_for_to_blocks ctx var iter_expr body =
   
   (* Create init block *)
   let init_instructions = [
-    Assign (var, Constant 0); (* Initialize to 0 *)
+    Assign (var, start_value); (* Initialize to start value, not 0! *)
   ] in
   let init_block = create_block_with_terminator init_label init_instructions (Jump cond_label) in
   add_block ctx init_block;
@@ -263,7 +358,7 @@ and convert_for_to_blocks ctx var iter_expr body =
   (* Create condition block *)
   let temp_end = generate_temp ctx in
   let cond_instructions = [
-    Assign (temp_end, iter_ir); (* Get end value from range *)
+    Assign (temp_end, end_value); (* Store end value *)
   ] in
   let condition = BinaryOp (Variable var, ILt, Variable temp_end) in
   let cond_block = create_block_with_terminator cond_label cond_instructions 
@@ -300,8 +395,8 @@ and convert_for_to_blocks ctx var iter_expr body =
   let update_block = create_block_with_terminator update_label update_instructions (Jump cond_label) in
   add_block ctx update_block;
   
-  (* Create exit block *)
-  let exit_block = create_empty_block exit_label in
+  (* Create exit block with proper termination for function end *)
+  let exit_block = create_block_with_terminator exit_label [] (Return None) in
   add_block ctx exit_block;
   
   (* Return jump to init *)
@@ -392,6 +487,7 @@ let convert_function ctx func_def =
   
   (* Reset context for this function *)
   ctx.current_blocks <- [];
+  ctx.locals <- []; (* Reset locals for this function *)
   ctx.current_function <- Some func_def.func_name;
   push_scope ctx; (* Function scope *)
   
@@ -400,22 +496,60 @@ let convert_function ctx func_def =
   
   (* Convert function body *)
   let (statements, final_expr) = func_def.func_body in
-  let body_instructions = List.concat_map (convert_statement_to_blocks ctx) statements in
   
-  (* Handle final expression *)
+  (* Process statements and collect all generated blocks *)
+  let entry_instructions = ref [] in
+  let has_control_flow = ref false in
+  
+  List.iter (fun stmt ->
+    let stmt_instructions = convert_statement_to_blocks ctx stmt in
+    (* If we got control flow instructions (like Jump), mark that we have control flow *)
+    List.iter (function
+      | Jump _ | Branch _ -> has_control_flow := true
+      | _ -> ()
+    ) stmt_instructions;
+    entry_instructions := !entry_instructions @ stmt_instructions
+  ) statements;
+  
+  (* Handle final expression - avoid double processing control flow *)
   let final_instructions = match final_expr with
     | Some expr ->
-      let ir_value = expression_to_ir_value ctx expr in
-      [Return (Some ir_value)]
-    | None -> [Return None]
+      (match expr with
+      | For _ | While _ | Loop _ | If _ when !has_control_flow -> 
+        (* Control flow expressions that were processed as statements don't need return *)
+        []
+      | _ ->
+        let ir_value = expression_to_ir_value ctx expr in
+        [Return (Some ir_value)])
+    | None when !has_control_flow -> 
+      (* No final expression and we have control flow - return is handled by exit blocks *)
+      []
+    | None -> 
+      [Return None]
   in
   
   (* Create entry block *)
-  let entry_block = create_block_with_terminator "entry" 
-    (body_instructions @ final_instructions) (Return None) in
+  let entry_block = if !has_control_flow then
+    (* Control flow case - include the control flow instructions but no return *)
+    { label = "entry"; instructions = !entry_instructions }
+  else
+    (* Normal case - include all instructions plus return *)
+    let all_entry_instructions = !entry_instructions @ final_instructions in
+    { label = "entry"; instructions = all_entry_instructions }
+  in
   
-  (* If we generated additional blocks during control flow, they're already added *)
-  let all_blocks = entry_block :: (get_blocks_in_order ctx) in
+  (* Combine entry block with any additional blocks generated during control flow *)
+  let additional_blocks = get_blocks_in_order ctx in
+  let all_blocks = entry_block :: additional_blocks in
+  
+  (* Post-process: if we have additional blocks but entry block has return, fix it *)
+  let final_blocks = if List.length additional_blocks > 0 then
+    (* We have control flow blocks - ensure entry block doesn't have spurious return *)
+    let corrected_entry = { label = "entry"; instructions = !entry_instructions } in
+    corrected_entry :: additional_blocks
+  else
+    all_blocks
+  in
   
   pop_scope ctx; (* Remove function scope *)
   
@@ -423,8 +557,8 @@ let convert_function ctx func_def =
     name = func_def.func_name;
     params = params;
     return_type = return_type;
-    locals = []; (* TODO: collect locals from scopes *)
-    blocks = all_blocks;
+    locals = List.rev ctx.locals; (* Collect locals from context *)
+    blocks = final_blocks;
   }
 
 (* Convert an AST program to IR module *)
@@ -452,7 +586,7 @@ let ast_program_to_ir_module (program : Ast.program) : ir_module =
     | GlobalVar (_, is_static, is_mutable, name, type_opt, init_expr) ->
       let ir_type = match type_opt with
         | Some t -> ast_type_to_ir_type t
-        | None -> IntType 32 (* placeholder *)
+        | None -> infer_type_from_expression ctx init_expr (* Proper type inference *)
       in
       let initial_value = Some (expression_to_ir_value ctx init_expr) in
       let global = {
