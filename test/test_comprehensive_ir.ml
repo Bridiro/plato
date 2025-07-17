@@ -102,7 +102,7 @@ let test_control_flow () =
   Printf.printf "========================\n";
   let tests = [
     ("If expression", "fn test() -> i32 { if true { 1 } else { 2 } }");
-    ("If statement", "fn test() { if x > 0 { return; } }");
+    ("If statement", "fn test(x: i32) { if x > 0 { return; } }");
     ("While loop", "fn test() { while true { break; } }");
     ("For loop", "fn test() { for i in 1..10 { continue; } }");
     ("Infinite loop", "fn test() { loop { break 42; } }");

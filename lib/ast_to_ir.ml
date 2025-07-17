@@ -217,8 +217,30 @@ let rec expression_to_ir_value ctx = function
     let _ = convert_if_to_blocks ctx cond then_block else_block in
     Constant 0  (* Return unit for now - proper implementation needs phi nodes *)
   | Ast.Match (expr, arms, _) ->
-    (* Match expressions need complex IR generation - placeholder for now *)
-    Constant 0
+    (* Generate match expression as series of if-else chains *)
+    (* For now, only handle simple literal patterns *)
+    let _expr_value = expression_to_ir_value ctx expr in
+    
+    (* Generate a series of conditional checks *)
+    let rec generate_match_chain arms default_value =
+      match arms with
+      | [] -> default_value
+      | Ast.MatchArm (pattern, body) :: rest ->
+        match pattern with
+        | Ast.LiteralPattern (Ast.IntLit (n, _)) ->
+          (* For now, just return the first match - proper implementation needs control flow *)
+          let then_value = expression_to_ir_value ctx body in
+          let _else_value = generate_match_chain rest default_value in
+          then_value
+        | Ast.WildcardPattern ->
+          (* Wildcard matches everything *)
+          expression_to_ir_value ctx body
+        | _ ->
+          (* Unsupported pattern - continue *)
+          generate_match_chain rest default_value
+    in
+    
+    generate_match_chain arms (Constant 0)
   | Ast.Loop (body, _) ->
     (* Loop expressions - generate the actual loop blocks *)
     let _ = convert_loop_to_blocks ctx body in
@@ -284,18 +306,24 @@ and convert_expression_statement_to_blocks ctx = function
   
   | Break (expr_opt, _) ->
     (* Break statements should jump to break label *)
-    (match ctx.break_label with
-    | Some label -> [Jump label]
-    | None -> 
-      (* No break context - for now generate temp assignment *)
-      match expr_opt with
-      | Some expr ->
-        let ir_value = expression_to_ir_value ctx expr in
-        let temp_name = generate_temp ctx in
-        [Assign (temp_name, ir_value)]
-      | None ->
-        let temp_name = generate_temp ctx in
-        [Assign (temp_name, Constant 0)])
+    (match ctx.break_label, expr_opt with
+    | Some label, Some expr ->
+      (* Break with value - assign to temp and jump *)
+      let ir_value = expression_to_ir_value ctx expr in
+      let temp_name = generate_temp ctx in
+      [Assign (temp_name, ir_value); Jump label]
+    | Some label, None ->
+      (* Simple break - just jump *)
+      [Jump label]
+    | None, Some expr ->
+      (* No break context but has value - assign to temp *)
+      let ir_value = expression_to_ir_value ctx expr in
+      let temp_name = generate_temp ctx in
+      [Assign (temp_name, ir_value)]
+    | None, None ->
+      (* No break context and no value - temp assignment *)
+      let temp_name = generate_temp ctx in
+      [Assign (temp_name, Constant 0)])
   
   | Continue _ ->
     (* Continue statements should jump to continue label *)
@@ -503,8 +531,17 @@ and convert_while_to_blocks ctx cond body =
   ctx.break_label <- old_break;
   pop_scope ctx;
   
-  let body_block = create_block_with_terminator body_label 
-    (body_instructions @ body_final_instructions) (Jump cond_label) in
+  (* Check if body already has control flow terminator *)
+  let body_has_terminator = List.exists (function
+    | Jump _ | Return _ | Branch _ -> true
+    | _ -> false
+  ) (body_instructions @ body_final_instructions) in
+  
+  let body_block = if body_has_terminator then
+    { label = body_label; instructions = body_instructions @ body_final_instructions }
+  else
+    create_block_with_terminator body_label 
+      (body_instructions @ body_final_instructions) (Jump cond_label) in
   add_block ctx body_block;
   
   (* Create exit block *)
@@ -517,13 +554,16 @@ and convert_while_to_blocks ctx cond body =
 (* Convert infinite loop to proper basic blocks *)
 and convert_loop_to_blocks ctx body =
   let loop_label = generate_label ctx "loop" in
+  let exit_label = generate_label ctx "loop_exit" in
   
   (* Create loop body block *)
   push_scope ctx;
   let old_continue = ctx.continue_label in
   let old_break = ctx.break_label in
+  let old_continuation = ctx.continuation_label in
   ctx.continue_label <- Some loop_label;
-  (* break_label would need to be set by outer context *)
+  ctx.break_label <- Some exit_label; (* Breaks go to exit block *)
+  ctx.continuation_label <- Some loop_label; (* Default continuation is loop *)
   
   let (body_stmts, body_final) = body in
   let body_instructions = List.concat_map (convert_statement_to_blocks ctx) body_stmts in
@@ -536,11 +576,25 @@ and convert_loop_to_blocks ctx body =
   
   ctx.continue_label <- old_continue;
   ctx.break_label <- old_break;
+  ctx.continuation_label <- old_continuation;
   pop_scope ctx;
   
-  let loop_block = create_block_with_terminator loop_label 
-    (body_instructions @ body_final_instructions) (Jump loop_label) in
+  (* Check if loop body has terminators (like break) *)
+  let body_has_terminator = List.exists (function
+    | Jump _ | Return _ | Branch _ -> true
+    | _ -> false
+  ) (body_instructions @ body_final_instructions) in
+  
+  let loop_block = if body_has_terminator then
+    { label = loop_label; instructions = body_instructions @ body_final_instructions }
+  else
+    create_block_with_terminator loop_label 
+      (body_instructions @ body_final_instructions) (Jump loop_label) in
   add_block ctx loop_block;
+  
+  (* Create exit block for break statements *)
+  let exit_block = create_block_with_terminator exit_label [] (Return None) in
+  add_block ctx exit_block;
   
   (* Return jump to loop *)
   [Jump loop_label]

@@ -321,7 +321,7 @@ let rec string_of_ir_value = function
       | INeg -> "-"
       | IDeref -> "*"
       | IRef -> "&"
-      | ISizeof -> "sizeof") ^ string_of_ir_value expr
+      | ISizeof -> "sizeof(" ^ string_of_ir_value expr ^ ")") ^ ""
   | Cast (expr, target_type) ->
     string_of_ir_value expr ^ " as " ^ string_of_ir_type target_type
   | FieldAccess (expr, field) ->
