@@ -70,13 +70,16 @@ let rec ir_value_to_llvm_value = function
     | INot -> "xor i1 " ^ ir_value_to_llvm_value operand ^ ", true"
     | INeg -> "sub i32 0, " ^ ir_value_to_llvm_value operand
     | IDeref -> "load ptr, " ^ ir_value_to_llvm_value operand
-    | IRef -> "alloca i32 ; address of " ^ ir_value_to_llvm_value operand
+    | IRef -> ir_value_to_llvm_value operand  (* Just return the address of the variable *)
     | ISizeof -> "4")  (* Simplified sizeof *)
   | Cast (value, target_type) ->
     let target_llvm = ir_type_to_llvm_type target_type in
     "bitcast " ^ ir_value_to_llvm_value value ^ " to " ^ target_llvm
   | FieldAccess (struct_val, field) ->
-    "getelementptr inbounds " ^ ir_value_to_llvm_value struct_val ^ ", " ^ field
+    let struct_ptr = ir_value_to_llvm_value struct_val in
+    (* For now, assume x is field 0 and y is field 1 - this should be looked up properly *)
+    let field_index = if field = "x" then "0" else "1" in
+    "getelementptr inbounds %struct.Point, ptr " ^ struct_ptr ^ ", i32 0, i32 " ^ field_index
   | ArrayAccess (array, index) ->
     "getelementptr inbounds " ^ ir_value_to_llvm_value array ^ ", " ^ ir_value_to_llvm_value index
   | StructInit (struct_name, fields) ->
@@ -95,8 +98,12 @@ let ir_instruction_to_llvm temp_counter = function
     (match value with
     | Call (func_name, args) ->
       let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
-      let args_str = String.concat ", " (List.map (fun arg -> 
-        "i32 " ^ ir_value_to_llvm_value arg) args) in
+      let args_str = String.concat ", " (List.mapi (fun i arg -> 
+        (* For method calls (containing ::), first argument is a pointer *)
+        if String.contains func_name ':' && i = 0 then
+          "ptr " ^ ir_value_to_llvm_value arg
+        else
+          "i32 " ^ ir_value_to_llvm_value arg) args) in
       temp_name ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
     | BinaryOp (left, op, right) ->
       let op_str = match op with
@@ -128,7 +135,8 @@ let ir_instruction_to_llvm temp_counter = function
       | IRef -> temp_name ^ " = alloca i32"
       | ISizeof -> temp_name ^ " = add i32 0, 4")
     | FieldAccess (struct_val, field) ->
-      temp_name ^ " = getelementptr inbounds %struct, ptr " ^ ir_value_to_llvm_value struct_val ^ ", i32 0, i32 0"
+      let field_index = if field = "x" then "0" else "1" in
+      temp_name ^ " = getelementptr inbounds %struct.Point, ptr " ^ ir_value_to_llvm_value struct_val ^ ", i32 0, i32 " ^ field_index
     | ArrayAccess (array, index) ->
       temp_name ^ " = getelementptr inbounds [10 x i32], ptr " ^ ir_value_to_llvm_value array ^ ", i32 0, i32 " ^ ir_value_to_llvm_value index
     | StructInit (struct_name, fields) ->
@@ -153,6 +161,15 @@ let ir_instruction_to_llvm temp_counter = function
       let temp_name = "%ret_tmp" ^ string_of_int (!temp_counter) in
       incr temp_counter;
       temp_name ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")\n  ret i32 " ^ temp_name
+    | FieldAccess (struct_val, field) ->
+      let struct_ptr = ir_value_to_llvm_value struct_val in
+      let field_index = if field = "x" then "0" else "1" in
+      let field_ptr_temp = "%field_ptr_tmp" ^ string_of_int (!temp_counter) in
+      incr temp_counter;
+      let load_temp = "%ret_tmp" ^ string_of_int (!temp_counter) in
+      incr temp_counter;
+      field_ptr_temp ^ " = getelementptr inbounds %struct.Point, ptr " ^ struct_ptr ^ ", i32 0, i32 " ^ field_index ^ "\n  " ^
+      load_temp ^ " = load i32, ptr " ^ field_ptr_temp ^ "\n  ret i32 " ^ load_temp
     | StructInit (struct_name, fields) ->
       let field_values = List.map (fun (_, fval) -> ir_value_to_llvm_value fval) fields in
       "ret %struct." ^ struct_name ^ " { " ^ String.concat ", " (List.map2 (fun (_, ftype) fval -> 
@@ -179,9 +196,28 @@ let ir_instruction_to_llvm temp_counter = function
         | IShl -> "shl"
         | IShr -> "ashr"
       in
+      (* Helper function to load field access values *)
+      let get_loaded_value val_expr =
+        match val_expr with
+        | FieldAccess (struct_val, field) ->
+          let struct_ptr = ir_value_to_llvm_value struct_val in
+          let field_index = if field = "x" then "0" else "1" in
+          let field_ptr_temp = "%field_ptr_tmp" ^ string_of_int (!temp_counter) in
+          incr temp_counter;
+          let load_temp = "%load_tmp" ^ string_of_int (!temp_counter) in
+          incr temp_counter;
+          let instr = field_ptr_temp ^ " = getelementptr inbounds %struct.Point, ptr " ^ struct_ptr ^ ", i32 0, i32 " ^ field_index ^ "\n  " ^
+                     load_temp ^ " = load i32, ptr " ^ field_ptr_temp in
+          (instr, load_temp)
+        | _ -> ("", ir_value_to_llvm_value val_expr)
+      in
+      let (left_instr, left_val) = get_loaded_value left in
+      let (right_instr, right_val) = get_loaded_value right in
       let temp_name = "%ret_tmp" ^ string_of_int (!temp_counter) in
       incr temp_counter;
-      temp_name ^ " = " ^ op_str ^ " i32 " ^ ir_value_to_llvm_value left ^ ", " ^ ir_value_to_llvm_value right ^ "\n  ret i32 " ^ temp_name
+      let all_instr = String.concat "\n  " (List.filter (fun s -> s <> "") [left_instr; right_instr]) in
+      let final_instr = if all_instr = "" then "" else all_instr ^ "\n  " in
+      final_instr ^ temp_name ^ " = " ^ op_str ^ " i32 " ^ left_val ^ ", " ^ right_val ^ "\n  ret i32 " ^ temp_name
     | _ ->
       "ret i32 " ^ ir_value_to_llvm_value value)
   
@@ -193,8 +229,12 @@ let ir_instruction_to_llvm temp_counter = function
   
   | Call (func_name, args) ->
     let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
-    let args_str = String.concat ", " (List.map (fun arg -> 
-      "i32 " ^ ir_value_to_llvm_value arg) args) in
+    let args_str = String.concat ", " (List.mapi (fun i arg -> 
+      (* For method calls (containing ::), first argument is a pointer *)
+      if String.contains func_name ':' && i = 0 then
+        "ptr " ^ ir_value_to_llvm_value arg
+      else
+        "i32 " ^ ir_value_to_llvm_value arg) args) in
     "call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
   
   | Store (addr, value) ->

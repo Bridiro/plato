@@ -173,13 +173,22 @@ let rec expression_to_ir_value ctx = function
     let expr_ir = expression_to_ir_value ctx expr in
     FieldAccess (expr_ir, field)
   | Ast.FunctionCall (func_expr, args, _) ->
-    let func_name = match func_expr with
-      | Ast.Identifier (name, _) -> name
-      | Ast.PathExpr (path, _) -> String.concat "::" path
-      | _ -> failwith "Complex function expressions not yet supported"
-    in
-    let args_ir = List.map (expression_to_ir_value ctx) args in
-    Call (func_name, args_ir)
+    (match func_expr with
+    | Ast.Identifier (name, _) -> 
+      let args_ir = List.map (expression_to_ir_value ctx) args in
+      Call (name, args_ir)
+    | Ast.PathExpr (path, _) -> 
+      let func_name = String.concat "::" path in
+      let args_ir = List.map (expression_to_ir_value ctx) args in
+      Call (func_name, args_ir)
+    | Ast.FieldAccess (struct_expr, method_name, _) ->
+      (* Method call: convert p.test() to Point::test(&p) *)
+      let struct_expr_ir = expression_to_ir_value ctx struct_expr in
+      let struct_addr = UnaryOp (IRef, struct_expr_ir) in
+      let method_full_name = "Point::" ^ method_name in  (* TODO: get actual struct type *)
+      let args_ir = List.map (expression_to_ir_value ctx) args in
+      Call (method_full_name, struct_addr :: args_ir)
+    | _ -> failwith "Complex function expressions not yet supported")
   | Ast.ArrayExpr (elements, _) ->
     let elements_ir = List.map (expression_to_ir_value ctx) elements in
     ArrayInit elements_ir

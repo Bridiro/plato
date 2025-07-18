@@ -271,24 +271,41 @@ let rec check_expression env = function
     | Sizeof, _ -> TI32
     | _ -> type_error_at pos "Type mismatch in unary operation")
   | FunctionCall (func_expr, args, pos) ->
-    let param_types, return_type =
+    let param_types, return_type, actual_args =
       match func_expr with
       | Identifier (name, func_pos) ->
         (match lookup_function env name with
-        | Some (params, ret) -> (params, ret)
+        | Some (params, ret) -> (params, ret, args)
         | None -> type_error_at func_pos ("Undefined function: " ^ name))
       | PathExpr (path, func_pos) ->
         let func_name = String.concat "::" path in
         (match lookup_function env func_name with
-        | Some (params, ret) -> (params, ret)
+        | Some (params, ret) -> (params, ret, args)
         | None -> type_error_at func_pos ("Function not found: " ^ func_name))
+      | FieldAccess (struct_expr, method_name, field_pos) ->
+        (* This is a method call: struct_expr.method_name(args) *)
+        let struct_type = check_expression env struct_expr in
+        let struct_name = match struct_type with
+          | TStruct (name, _) -> name
+          | _ -> type_error_at field_pos "Method call on non-struct type"
+        in
+        let method_func_name = struct_name ^ "::" ^ method_name in
+        (match lookup_function env method_func_name with
+        | Some (params, ret) -> 
+          (* Skip the first parameter (self) when checking method call arguments *)
+          let method_params = match params with
+            | _ :: rest -> rest  (* Skip self parameter *)
+            | [] -> []
+          in
+          (method_params, ret, args)  (* Don't add struct as argument here *)
+        | None -> type_error_at field_pos ("Method not found: " ^ method_name ^ " for type " ^ struct_name))
       | _ ->
         let func_type = check_expression env func_expr in
         (match func_type with
-        | TFunction (params, ret) -> (params, ret)
+        | TFunction (params, ret) -> (params, ret, args)
         | _ -> type_error_at pos "Expression is not callable")
     in
-    let arg_types = List.map (check_expression env) args in
+    let arg_types = List.map (check_expression env) actual_args in
     if List.length param_types = List.length arg_types then (
       List.iter2
         (fun expected actual ->
