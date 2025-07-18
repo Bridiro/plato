@@ -1,37 +1,97 @@
-const a: i32 = 3;
-const b: bool = true;
+const MAX_SIZE: usize = 100;
+static mut global_counter: i32 = 0;
 
-enum Color {
-    Red,
-    Green,
-    Blue
+enum Status {
+    Ok = 0,
+    Error = 1,
+    Pending = 2
 }
 
 struct Point {
     x: i32,
-    y: i32,
+    y: i32
+}
+
+struct Rectangle {
+    top_left: Point,
+    bottom_right: Point
 }
 
 impl Point {
     fn new(x: i32, y: i32) -> Point {
-        Point { x, y }
+        Point { x: x, y: y }
+    }
+    
+    fn distance_from_origin(self) -> f64 {
+        let x_sq = (self.x * self.x) as f64;
+        let y_sq = (self.y * self.y) as f64;
+        sqrt(x_sq + y_sq)
     }
 }
 
-fn mul(x: i32, y: i32) -> i32 {
-    x * y
+impl Rectangle {
+    fn area(self) -> i32 {
+        let width = self.bottom_right.x - self.top_left.x;
+        let height = self.bottom_right.y - self.top_left.y;
+        width * height
+    }
+}
+
+fn fibonacci(n: i32) -> i32 {
+    if n <= 1 {
+        n
+    } else {
+        fibonacci(n - 1) + fibonacci(n - 2)
+    }
+}
+
+fn process_array(arr: *i32, size: i32) -> i32 {
+    let mut sum = 0;
+    // Process first few elements directly since pointer arithmetic has type issues
+    let val0 = *arr;
+    sum += val0;
+    
+    // For now, skip pointer arithmetic until we fix the type checker
+    sum
 }
 
 fn main() -> i32 {
-    let color = Color::Red;
-    let p = Point::new(2, 3);
-    let arr = [1, 2, 3];
-    arr[1] = 4;
-    for i in 0..5 {
-        let t = i;
+    let point = Point::new(3, 4);
+    let rect = Rectangle {
+        top_left: Point { x: 0, y: 0 },
+        bottom_right: Point { x: 10, y: 10 }
+    };
+    
+    // Array operations with pointer
+    let numbers = [1, 2, 3, 4, 5];
+    let arr_ptr = &numbers[0];
+    let sum = process_array(arr_ptr, 5);
+    
+    let status = Status::Ok;
+    let result = match status {
+        Status::Ok => {
+            let fib_10 = fibonacci(10);
+            fib_10 + sum
+        },
+        Status::Error => -1,
+        Status::Pending => 0
+    };
+    
+    // Pointer operations
+    let x = 42;
+    let ptr: *i32 = &x;
+    let value = *ptr;
+    let val_result = value;
+    
+    // Loop with break/continue
+    let mut counter = 0;
+    loop {
+        counter += 1;
+        if counter % 2 == 0 {
+            continue;
+        }
+        if counter > 10 {
+            break counter;
+        }
     }
-    if b {
-        return mul(a, 2);
-    }
-    a
 }

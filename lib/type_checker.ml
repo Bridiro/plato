@@ -131,6 +131,10 @@ let rec ast_type_to_simple_type = function
     let name = String.concat "::" path in
     TGeneric name
   | GenericType name -> TGeneric name
+  | SelfType _ ->
+    (* For now, assume self is a pointer to the current type *)
+    (* This will be resolved properly during impl block processing *)
+    TGeneric "Self"
 
 (* Type compatibility helpers *)
 let normalize_type = function
@@ -211,44 +215,6 @@ let type_of_literal = function
   | BoolLit _ -> TBool
   | UnitLit -> TUnit
   | NullLit -> TNullPtr
-
-(* Convert AST types to simple types *)
-let rec ast_type_to_simple_type = function
-  | PrimType prim ->
-    (match prim with
-    | I8 -> TI8
-    | I16 -> TI16
-    | I32 -> TI32
-    | I64 -> TI64
-    | U8 -> TU8
-    | U16 -> TU16
-    | U32 -> TU32
-    | U64 -> TU64
-    | Usize -> TUsize
-    | F32 -> TF32
-    | F64 -> TF64
-    | Bool -> TBool
-    | Char -> TChar
-    | Str -> TStr
-    | Void -> TVoid)
-  | ArrayType (elem_type, _size_expr) ->
-    let elem_simple = ast_type_to_simple_type elem_type in
-    TArray (elem_simple, None)
-  | PointerType inner_type ->
-    let inner_simple = ast_type_to_simple_type inner_type in
-    TPointer inner_simple
-  | FunctionType (param_types, return_type_opt) ->
-    let param_simples = List.map ast_type_to_simple_type param_types in
-    let return_simple =
-      match return_type_opt with
-      | Some ret_type -> ast_type_to_simple_type ret_type
-      | None -> TUnit
-    in
-    TFunction (param_simples, return_simple)
-  | PathType (path, _generics_opt) ->
-    let name = String.concat "::" path in
-    TGeneric name
-  | GenericType name -> TGeneric name
 
 (* Type compatibility helpers *)
 let normalize_type = function
@@ -717,6 +683,66 @@ and check_statement env = function
     ignore result_type ;
     env
 
+(* Resolve SelfType in the context of an impl block *)
+let resolve_self_type impl_type = function
+  | SelfType _ -> 
+    (* In an impl block, self refers to the impl type *)
+    (match impl_type with
+    | PathType (path, _) -> 
+      (* For struct impl, self is a pointer to the struct *)
+      PointerType impl_type
+    | _ -> impl_type)
+  | other_type -> other_type
+
+(* Enhanced AST type conversion with context *)
+let rec ast_type_to_simple_type_with_context impl_type_opt = function
+  | PrimType prim ->
+    (match prim with
+    | I8 -> TI8
+    | I16 -> TI16
+    | I32 -> TI32
+    | I64 -> TI64
+    | U8 -> TU8
+    | U16 -> TU16
+    | U32 -> TU32
+    | U64 -> TU64
+    | Usize -> TUsize
+    | F32 -> TF32
+    | F64 -> TF64
+    | Bool -> TBool
+    | Char -> TChar
+    | Str -> TStr
+    | Void -> TVoid)
+  | ArrayType (elem_type, _size_expr) ->
+    let elem_simple = ast_type_to_simple_type_with_context impl_type_opt elem_type in
+    TArray (elem_simple, None)
+  | PointerType inner_type ->
+    let inner_simple = ast_type_to_simple_type_with_context impl_type_opt inner_type in
+    TPointer inner_simple
+  | FunctionType (param_types, return_type_opt) ->
+    let param_simples = List.map (ast_type_to_simple_type_with_context impl_type_opt) param_types in
+    let return_simple =
+      match return_type_opt with
+      | Some ret_type -> ast_type_to_simple_type_with_context impl_type_opt ret_type
+      | None -> TUnit
+    in
+    TFunction (param_simples, return_simple)
+  | PathType (path, _generics_opt) ->
+    let name = String.concat "::" path in
+    TGeneric name
+  | GenericType name -> TGeneric name
+  | SelfType _ ->
+    (* Resolve SelfType based on impl context *)
+    (match impl_type_opt with
+    | Some impl_type ->
+      (match impl_type with
+      | PathType (path, _) ->
+        (* self is a pointer to the struct type *)
+        let struct_name = String.concat "::" path in
+        TPointer (TGeneric struct_name)
+      | _ -> TGeneric "Self")  (* Fallback *)
+    | None -> TGeneric "Self")  (* No context, use generic *)
+
 (* Type checking for top-level items *)
 and check_item env = function
   | Function func_def ->
@@ -801,12 +827,12 @@ and check_item env = function
           in
           let param_types =
             List.map
-              (fun param -> ast_type_to_simple_type param.param_type)
+              (fun param -> ast_type_to_simple_type_with_context (Some impl_def.impl_type) param.param_type)
               func_def.func_params
           in
           let return_type =
             match func_def.func_return with
-            | Some ast_type -> ast_type_to_simple_type ast_type
+            | Some ast_type -> ast_type_to_simple_type_with_context (Some impl_def.impl_type) ast_type
             | None -> TUnit
           in
           add_function acc_env method_name param_types return_type

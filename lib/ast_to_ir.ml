@@ -733,9 +733,22 @@ let ast_program_to_ir_module (program : Ast.program) : ir_module =
             | PathType (path, _) -> String.concat "::" path
             | _ -> "Unknown"
           in
+          
+          (* Resolve SelfType parameters for impl functions *)
+          let resolved_params = List.map (fun param ->
+            let resolved_type = match param.param_type with
+              | SelfType _ -> 
+                (* In impl block, self is a pointer to the impl type *)
+                Ast.PointerType (impl_def.impl_type)
+              | other_type -> other_type
+            in
+            { param with param_type = resolved_type }
+          ) func_def.func_params in
+          
           let qualified_func_def = {
             func_def with 
-            func_name = impl_type_name ^ "::" ^ func_def.func_name
+            func_name = impl_type_name ^ "::" ^ func_def.func_name;
+            func_params = resolved_params;
           } in
           let ir_func = convert_function ctx qualified_func_def in
           functions := ir_func :: !functions

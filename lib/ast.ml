@@ -58,6 +58,7 @@ type eiron_type =
   | FunctionType of eiron_type list * eiron_type option
   | PathType of path * eiron_type list option
   | GenericType of string
+  | SelfType of position
 
 and binary_op =
   | Add

@@ -132,6 +132,40 @@ let primitive_to_ir_type = function
   | Ast.Void -> VoidType
 
 (* Convert AST types to IR types *)
+(* Context-aware AST type to IR type conversion *)
+let rec ast_type_to_ir_type_with_context impl_type_opt = function
+  | Ast.PrimType prim -> primitive_to_ir_type prim
+  | Ast.ArrayType (element_type, _size_expr) ->
+    (* For now, assume constant size - will need evaluation later *)
+    let ir_element_type = ast_type_to_ir_type_with_context impl_type_opt element_type in
+    ArrayType (ir_element_type, 1)  (* Placeholder size *)
+  | Ast.PointerType inner_type ->
+    PointerType (ast_type_to_ir_type_with_context impl_type_opt inner_type)
+  | Ast.FunctionType (param_types, return_type) ->
+    let ir_param_types = List.map (ast_type_to_ir_type_with_context impl_type_opt) param_types in
+    let ir_return_type = match return_type with
+      | Some rt -> ast_type_to_ir_type_with_context impl_type_opt rt
+      | None -> VoidType
+    in
+    FunctionType (ir_param_types, ir_return_type)
+  | Ast.PathType (path, _) ->
+    (* For now, assume it's a struct type *)
+    StructType (String.concat "::" path, [])
+  | Ast.GenericType name ->
+    (* Generics should be monomorphized before IR generation *)
+    failwith ("Generic type not monomorphized: " ^ name)
+  | Ast.SelfType _ ->
+    (* Resolve SelfType based on impl context *)
+    (match impl_type_opt with
+    | Some impl_type ->
+      (match impl_type with
+      | Ast.PathType (path, _) ->
+        (* self is a pointer to the struct type *)
+        let struct_name = String.concat "::" path in
+        PointerType (StructType (struct_name, []))
+      | _ -> failwith "SelfType in non-struct impl not supported")
+    | None -> failwith "SelfType without impl context")
+
 let rec ast_type_to_ir_type = function
   | Ast.PrimType prim -> primitive_to_ir_type prim
   | Ast.ArrayType (element_type, _size_expr) ->
@@ -153,6 +187,9 @@ let rec ast_type_to_ir_type = function
   | Ast.GenericType name ->
     (* Generics should be monomorphized before IR generation *)
     failwith ("Generic type not monomorphized: " ^ name)
+  | Ast.SelfType _ ->
+    (* SelfType should be resolved during type checking phase *)
+    failwith "SelfType should be resolved before IR generation"
 
 (* Convert AST literals to IR values *)
 let literal_to_ir_value = function
@@ -317,11 +354,11 @@ let rec string_of_ir_value = function
       | IShr -> ">>") ^ " " ^ string_of_ir_value right
   | UnaryOp (op, expr) ->
     (match op with
-      | INot -> "!"
-      | INeg -> "-"
-      | IDeref -> "*"
-      | IRef -> "&"
-      | ISizeof -> "sizeof(" ^ string_of_ir_value expr ^ ")") ^ ""
+      | INot -> "!" ^ string_of_ir_value expr
+      | INeg -> "-" ^ string_of_ir_value expr
+      | IDeref -> "*" ^ string_of_ir_value expr
+      | IRef -> "&" ^ string_of_ir_value expr
+      | ISizeof -> "sizeof(" ^ string_of_ir_value expr ^ ")")
   | Cast (expr, target_type) ->
     string_of_ir_value expr ^ " as " ^ string_of_ir_type target_type
   | FieldAccess (expr, field) ->

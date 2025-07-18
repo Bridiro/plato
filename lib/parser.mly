@@ -246,6 +246,11 @@ param:
     { param_name = "self";
       param_type = ty }
   }
+| SELF
+  {
+    { param_name = "self";
+      param_type = SelfType (make_position $startpos) }
+  }
 
 (* Return type *)
 return_type:
@@ -304,6 +309,7 @@ path:
 simple_expression:
 | lit = literal { Literal (lit, make_position $startpos) }
 | id = IDENTIFIER { Identifier (id, make_position $startpos) }
+| SELF { Identifier ("self", make_position $startpos) }
 | path = multi_part_path { PathExpr (path, make_position $startpos) }
 | LPAREN e = expression RPAREN { e }
 | block = block { Block (block, make_position $startpos) }
