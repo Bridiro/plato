@@ -42,7 +42,7 @@ let rec ir_value_to_llvm_value = function
     let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
     let args_str = String.concat ", " (List.map ir_value_to_llvm_value args) in
     "call @" ^ mangled_name ^ "(" ^ args_str ^ ")"
-  | Load value -> "load ptr, " ^ ir_value_to_llvm_value value
+  | Load value -> "load i32, ptr " ^ ir_value_to_llvm_value value
   | BinaryOp (left, op, right) ->
     let op_str = match op with
       | IAdd -> "add"
@@ -99,23 +99,39 @@ let rec ir_value_to_llvm_value = function
   | ArrayInit values ->
     let value_strs = List.map ir_value_to_llvm_value values in
     "[ " ^ String.concat ", " value_strs ^ " ]"
+  | Select (cond, true_val, false_val) ->
+    "select i1 " ^ ir_value_to_llvm_value cond ^ ", i32 " ^ ir_value_to_llvm_value true_val ^ ", i32 " ^ ir_value_to_llvm_value false_val
   | Store (addr, value) ->
     "store " ^ ir_value_to_llvm_value value ^ ", " ^ ir_value_to_llvm_value addr
 
 (* Generate LLVM instruction from IR instruction *)
 let ir_instruction_to_llvm temp_counter = function
   | Assign (var, value) ->
-    let temp_name = "%" ^ var in
-    (match value with
-    | Call (func_name, args) ->
-      let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
-      let args_str = String.concat ", " (List.mapi (fun i arg -> 
-        (* For method calls (containing ::), first argument is a pointer *)
-        if String.contains func_name ':' && i = 0 then
-          "ptr " ^ ir_value_to_llvm_value arg
-        else
-          "i32 " ^ ir_value_to_llvm_value arg) args) in
-      temp_name ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
+    (* Check if this is a phi node assignment from conditional evaluation *)
+    if String.contains var ':' then
+      (* Extract phi information: var format is "PHI:then_temp:then_label:else_temp:else_label" *)
+      let parts = String.split_on_char ':' var in
+      match parts with
+      | ["PHI"; then_temp; then_label; else_temp; else_label] ->
+        let actual_var = ir_value_to_llvm_value value in
+        Printf.sprintf "%s = phi i32 [ %%%s, %%%s ], [ %%%s, %%%s ]"
+          actual_var then_temp then_label else_temp else_label
+      | _ ->
+        (* Fallback for malformed phi *)
+        let temp_name = "%" ^ var in
+        temp_name ^ " = " ^ ir_value_to_llvm_value value
+    else
+      let temp_name = "%" ^ var in
+      (match value with
+      | Call (func_name, args) ->
+        let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
+        let args_str = String.concat ", " (List.mapi (fun i arg -> 
+          (* For method calls (containing ::), first argument is a pointer *)
+          if String.contains func_name ':' && i = 0 then
+            "ptr " ^ ir_value_to_llvm_value arg
+          else
+            "i32 " ^ ir_value_to_llvm_value arg) args) in
+        temp_name ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
     | BinaryOp (left, op, right) ->
       let op_str = match op with
         | IAdd -> "add"

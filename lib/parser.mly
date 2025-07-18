@@ -306,8 +306,8 @@ simple_expression:
   { ArrayExpr (exprs, make_position $startpos) }
 | path = path LBRACE fields = struct_field_list RBRACE
   { StructExpr (path, fields, make_position $startpos) }
-| IF cond = condition_expr then_block = block ELSE else_block = block
-  { If (cond, then_block, Some else_block, make_position $startpos) }
+| IF cond = condition_expr then_block = block else_part = else_part?
+  { If (cond, then_block, else_part, make_position $startpos) }
 | MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
   { Match (expr, arms, make_position $startpos) }
 | LOOP body = block { Loop (body, make_position $startpos) }
@@ -490,18 +490,12 @@ block_inner:
 | stmt = statement { ([stmt], None) }
 | stmt = statement inner = block_inner { let (stmts, expr) = inner in (stmt::stmts, expr) }
 | expr = expression { ([], Some expr) }
-| if_stmt = if_statement inner = block_inner { let (stmts, expr) = inner in (if_stmt::stmts, expr) }
-| if_stmt = if_statement { ([if_stmt], None) }
 | for_stmt = for_statement inner = block_inner { let (stmts, expr) = inner in (for_stmt::stmts, expr) }
 | for_stmt = for_statement { ([for_stmt], None) }
 | while_stmt = while_statement inner = block_inner { let (stmts, expr) = inner in (while_stmt::stmts, expr) }
 | while_stmt = while_statement { ([while_stmt], None) }
 
 (* IF statements without else clause - treated as statements *)
-if_statement:
-| IF cond = condition_expr then_block = block
-  { ExprStmt (If (cond, then_block, None, make_position $startpos)) }
-
 (* FOR statements - treated as statements *)
 for_statement:
 | FOR var = IDENTIFIER IN iter = condition_expr body = block
@@ -558,5 +552,10 @@ type_list:
 | ty = eiron_type { [ty] }
 | ty = eiron_type COMMA { [ty] }
 | ty = eiron_type COMMA rest = type_list { ty :: rest }
+
+else_part:
+| ELSE block = block { block }
+| ELSE IF cond = condition_expr then_block = block else_part = else_part?
+  { ([], Some (If (cond, then_block, else_part, make_position $startpos($2)))) }
 
 %%

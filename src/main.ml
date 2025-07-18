@@ -83,11 +83,12 @@ let () =
     let s_file = base_name ^ ".s" in
     let executable = base_name in
 
-    if !emit_ir then
+    if !emit_ir then begin
       Printf.printf "Generated IR: %s\n" ir_file ;
       let oc = open_out ir_file in
       output_string oc (Eiron.Ir.string_of_ir_module ir_module) ;
       close_out oc ;
+    end ;
 
     (* Always write LLVM IR to temporary file for compilation *)
     let oc = open_out ll_file in

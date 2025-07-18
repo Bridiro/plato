@@ -244,9 +244,9 @@ let rec expression_to_ir_value ctx = function
   | Ast.Continue _ ->
     Constant 0  (* Continue doesn't produce a value *)
   | Ast.If (cond, then_block, else_block, _) ->
-    (* For if expressions, generate the control flow blocks *)
-    let _ = convert_if_to_blocks ctx cond then_block else_block in
-    Constant 0  (* Return unit for now - proper implementation needs phi nodes *)
+    (* For if expressions not in assignments, just return a placeholder *)
+    (* This shouldn't happen in practice since we handle if in LetStmt *)
+    Constant 0
   | Ast.Match (expr, arms, _) ->
     (* Generate match expression as series of if-else chains *)
     (* For now, only handle simple literal patterns *)
@@ -290,6 +290,15 @@ and convert_statement_to_blocks ctx stmt =
   match stmt with
   | LetStmt (is_mutable, name, type_opt, init_expr_opt) ->
     (match init_expr_opt with
+    | Some (Ast.If (cond, then_block, else_block, _)) ->
+      (* Special handling for if expressions in let statements *)
+      let ir_type = match type_opt with
+        | Some t -> ast_type_to_ir_type t
+        | None -> IntType 32 (* Default to i32 for conditional expressions *)
+      in
+      declare_symbol ctx name ir_type;
+      (* Generate control flow blocks for the if expression *)
+      convert_if_expression_to_assignment ctx name cond then_block else_block
     | Some init_expr ->
       let ir_value = expression_to_ir_value ctx init_expr in
       let ir_type = match type_opt with
@@ -370,6 +379,115 @@ and convert_expression_statement_to_blocks ctx = function
     let ir_value = expression_to_ir_value ctx expr in
     let temp_name = generate_temp ctx in
     [Assign (temp_name, ir_value)]
+
+(* Convert if expression to proper basic blocks with assignment to a variable *)
+and convert_if_expression_to_assignment ctx result_var cond then_block else_block =
+  (* Generate unique temporary variables for each branch *)
+  let cond_ir = expression_to_ir_value ctx cond in
+  let then_label = generate_label ctx "if_then" in
+  let else_label = generate_label ctx "if_else" in
+  let end_label = generate_label ctx "if_end" in
+  
+  (* Create unique temporaries for each branch result *)
+  let then_temp = generate_temp ctx in
+  let else_temp = generate_temp ctx in
+  
+  (* Create the conditional blocks *)
+  let branch_instruction = Branch (cond_ir, then_label, else_label) in
+  
+  (* Then block: assign to unique temporary *)
+  let (then_stmts, then_final) = then_block in
+  let then_value = match then_final with
+    | Some expr -> expression_to_ir_value ctx expr
+    | None -> Constant 0
+  in
+  let then_block_ir = {
+    label = then_label;
+    instructions = [Assign (then_temp, then_value); Jump end_label]
+  } in
+  add_block ctx then_block_ir;
+  
+  (* Else block: assign to unique temporary *)
+  let else_value = match else_block with
+    | Some (else_stmts, else_final) ->
+      (match else_final with
+      | Some expr -> expression_to_ir_value ctx expr
+      | None -> Constant 0)
+    | None -> Constant 0
+  in
+  let else_block_ir = {
+    label = else_label;
+    instructions = [Assign (else_temp, else_value); Jump end_label]
+  } in
+  add_block ctx else_block_ir;
+  
+  (* End block: phi node to merge the results *)
+  let end_block_ir = {
+    label = end_label;
+    instructions = [
+      (* Store phi node information for LLVM generation *)
+      Assign ("PHI:" ^ then_temp ^ ":" ^ then_label ^ ":" ^ else_temp ^ ":" ^ else_label, Variable result_var);
+      (* Add return for functions - this is a temporary fix *)
+      Return (Some (Variable result_var))
+    ]
+  } in
+  add_block ctx end_block_ir;
+  
+  (* Return the branch instruction *)
+  [branch_instruction]
+
+(* Convert if expression used as a value to basic blocks with result storage *)
+and convert_if_to_blocks_with_result ctx cond then_block else_block result_temp =
+  let cond_ir = expression_to_ir_value ctx cond in
+  let then_label = generate_label ctx "then" in
+  let else_label = generate_label ctx "else" in
+  let merge_label = generate_label ctx "merge" in
+  
+  (* Create then block *)
+  let (then_stmts, then_final) = then_block in
+  push_scope ctx;
+  let then_instructions = List.concat_map (convert_statement_to_blocks ctx) then_stmts in
+  let then_result_instructions = match then_final with
+    | Some expr ->
+      let value = expression_to_ir_value ctx expr in
+      [Assign (result_temp, value)]
+    | None -> 
+      [Assign (result_temp, Constant 0)]
+  in
+  pop_scope ctx;
+  
+  let then_block_ir = create_block_with_terminator then_label 
+    (then_instructions @ then_result_instructions) (Jump merge_label) in
+  add_block ctx then_block_ir;
+  
+  (* Create else block *)
+  let else_instructions = match else_block with
+    | Some (else_stmts, else_final) ->
+      push_scope ctx;
+      let else_stmts_ir = List.concat_map (convert_statement_to_blocks ctx) else_stmts in
+      let else_result_instructions = match else_final with
+        | Some expr ->
+          let value = expression_to_ir_value ctx expr in
+          [Assign (result_temp, value)]
+        | None -> 
+          [Assign (result_temp, Constant 0)]
+      in
+      pop_scope ctx;
+      else_stmts_ir @ else_result_instructions
+    | None -> 
+      [Assign (result_temp, Constant 0)]
+  in
+  
+  let else_block_ir = create_block_with_terminator else_label 
+    else_instructions (Jump merge_label) in
+  add_block ctx else_block_ir;
+  
+  (* Create merge block *)
+  let merge_block_ir = { label = merge_label; instructions = [] } in
+  add_block ctx merge_block_ir;
+  
+  (* Return the branch instruction for the current block *)
+  [Branch (cond_ir, then_label, else_label)]
 
 (* Convert if statement to proper basic blocks *)
 and convert_if_to_blocks ctx cond then_block else_block =

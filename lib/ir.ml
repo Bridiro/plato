@@ -42,6 +42,7 @@ type ir_value =
   | ArrayAccess of ir_value * ir_value
   | StructInit of string * (string * ir_value) list
   | ArrayInit of ir_value list
+  | Select of ir_value * ir_value * ir_value  (* condition, true_value, false_value *)
 
 (* IR instructions represent operations *)
 type ir_instruction =
@@ -369,6 +370,8 @@ let rec string_of_ir_value = function
     name ^ " { " ^ String.concat ", " (List.map (fun (n, v) -> n ^ ": " ^ string_of_ir_value v) fields) ^ " }"
   | ArrayInit elements ->
     "[" ^ String.concat ", " (List.map string_of_ir_value elements) ^ "]"
+  | Select (cond, true_val, false_val) ->
+    "select " ^ string_of_ir_value cond ^ " ? " ^ string_of_ir_value true_val ^ " : " ^ string_of_ir_value false_val
 
 let string_of_ir_instruction = function
   | Assign (var, value) -> var ^ " = " ^ string_of_ir_value value
