@@ -887,8 +887,6 @@ and check_item env = function
 let type_check_program program filename =
   try
     ignore (List.fold_left check_item builtin_env program) ;
-    (* If successful, print success message *)
-    Printf.printf "Type checking completed successfully for %s\n" filename
   with
   | Error.CompilerError error ->
     (* Re-raise the original error *)
