@@ -50,9 +50,26 @@ let () =
     (* Convert AST to IR *)
     let ir_module = Eiron.Ast_to_ir.convert_ast_to_ir ast in
 
+    (* Generate LLVM IR *)
+    let llvm_ir = Eiron.Llvm_gen.generate_llvm ir_module in
+
+    (* Create output filename by replacing .eiron with .ll *)
+    let output_file = 
+      if String.ends_with ~suffix:".eiron" !input_file then
+        String.sub !input_file 0 (String.length !input_file - 6) ^ ".ll"
+      else
+        !input_file ^ ".ll"
+    in
+
+    (* Write LLVM IR to file *)
+    let oc = open_out output_file in
+    output_string oc llvm_ir ;
+    close_out oc ;
+
     (* For now, just print success and show the AST structure *)
     Printf.printf "✓ Successfully parsed and type-checked: %s\n" !input_file ;
     Printf.printf "Program contains %d top-level items\n" (List.length ast) ;
+    Printf.printf "Generated LLVM IR: %s\n" output_file ;
     Printf.printf "\n--- Generated IR ---\n" ;
     Printf.printf "%s\n" (Eiron.Ir.string_of_ir_module ir_module)
   with
