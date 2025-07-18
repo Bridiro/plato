@@ -36,17 +36,6 @@ let with_position startpos _endpos x =
 
 (* Precedence and associativity *)
 %right ASSIGN
-%left OR
-%left AND
-%left BIT_OR
-%left BIT_XOR
-%left BIT_AND
-%left EQ NE
-%left LT GT LE GE
-%left DOTDOT
-%left SHL SHR
-%left PLUS MINUS
-%left STAR SLASH PERCENT
 %right NOT
 %left DOT
 %left LBRACKET
@@ -313,23 +302,7 @@ simple_expression:
 | path = multi_part_path { PathExpr (path, make_position $startpos) }
 | LPAREN e = expression RPAREN { e }
 | block = block { Block (block, make_position $startpos) }
-
-(* Multi-part paths (at least one ::) *)
-multi_part_path:
-| id1 = IDENTIFIER DOUBLE_COLON id2 = IDENTIFIER { [id1; id2] }
-| path = multi_part_path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
-
-expression:
-| e = simple_expression { e }
-| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2, make_position $startpos(op)) }
-| op = unary_op e = expression %prec NOT { UnaryOp (op, e, make_position $startpos) }
-| e = expression AS ty = eiron_type { Cast (e, ty, make_position $startpos) }
-| e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
-| e = expression DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
-| e = expression ARROW field = IDENTIFIER { PointerAccess (e, field, make_position $startpos) }
-| func = expression LPAREN args = expression_list RPAREN
-  { FunctionCall (func, args, make_position $startpos) }
-| LBRACKET exprs = expression_list RBRACKET
+| LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
   { ArrayExpr (exprs, make_position $startpos) }
 | path = path LBRACE fields = struct_field_list RBRACE
   { StructExpr (path, fields, make_position $startpos) }
@@ -344,7 +317,59 @@ expression:
 | RETURN expr = expression? { Return (expr, make_position $startpos) }
 | BREAK expr = expression? { Break (expr, make_position $startpos) }
 | CONTINUE { Continue (make_position $startpos) }
-| e1 = expression DOTDOT e2 = expression { Range (e1, e2, make_position $startpos) }
+| e1 = condition_expr DOTDOT e2 = condition_expr { Range (e1, e2, make_position $startpos) }
+
+(* Multi-part paths (at least one ::) *)
+multi_part_path:
+| id1 = IDENTIFIER DOUBLE_COLON id2 = IDENTIFIER { [id1; id2] }
+| path = multi_part_path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
+
+expression:
+| e = or_expr { e }
+
+or_expr:
+| e = and_expr { e }
+| e1 = or_expr OR e2 = and_expr { BinaryOp (e1, Or, e2, make_position $startpos($2)) }
+
+and_expr:
+| e = equality_expr { e }
+| e1 = and_expr AND e2 = equality_expr { BinaryOp (e1, And, e2, make_position $startpos($2)) }
+
+equality_expr:
+| e = relational_expr { e }
+| e1 = equality_expr EQ e2 = relational_expr { BinaryOp (e1, Eq, e2, make_position $startpos($2)) }
+| e1 = equality_expr NE e2 = relational_expr { BinaryOp (e1, Ne, e2, make_position $startpos($2)) }
+
+relational_expr:
+| e = additive_expr { e }
+| e1 = relational_expr LT e2 = additive_expr { BinaryOp (e1, Lt, e2, make_position $startpos($2)) }
+| e1 = relational_expr GT e2 = additive_expr { BinaryOp (e1, Gt, e2, make_position $startpos($2)) }
+| e1 = relational_expr LE e2 = additive_expr { BinaryOp (e1, Le, e2, make_position $startpos($2)) }
+| e1 = relational_expr GE e2 = additive_expr { BinaryOp (e1, Ge, e2, make_position $startpos($2)) }
+
+additive_expr:
+| e = multiplicative_expr { e }
+| e1 = additive_expr PLUS e2 = multiplicative_expr { BinaryOp (e1, Add, e2, make_position $startpos($2)) }
+| e1 = additive_expr MINUS e2 = multiplicative_expr { BinaryOp (e1, Sub, e2, make_position $startpos($2)) }
+
+multiplicative_expr:
+| e = unary_expr { e }
+| e1 = multiplicative_expr STAR e2 = unary_expr { BinaryOp (e1, Mul, e2, make_position $startpos($2)) }
+| e1 = multiplicative_expr SLASH e2 = unary_expr { BinaryOp (e1, Div, e2, make_position $startpos($2)) }
+| e1 = multiplicative_expr PERCENT e2 = unary_expr { BinaryOp (e1, Mod, e2, make_position $startpos($2)) }
+
+unary_expr:
+| e = postfix_expr { e }
+| op = unary_op e = unary_expr { UnaryOp (op, e, make_position $startpos) }
+
+postfix_expr:
+| e = simple_expression { e }
+| e = postfix_expr AS ty = eiron_type { Cast (e, ty, make_position $startpos) }
+| e1 = postfix_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
+| e = postfix_expr DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
+| e = postfix_expr ARROW field = IDENTIFIER { PointerAccess (e, field, make_position $startpos) }
+| func = postfix_expr LPAREN args = separated_list(COMMA, expression) RPAREN
+  { FunctionCall (func, args, make_position $startpos) }
 
 (* Literals *)
 literal:
@@ -521,11 +546,6 @@ struct_field_list:
 | field = struct_field COMMA { [field] }
 | field = struct_field COMMA rest = struct_field_list { field :: rest }
 
-expression_list:
-| (* empty *) { [] }
-| expr = expression { [expr] }
-| expr = expression COMMA { [expr] }
-| expr = expression COMMA rest = expression_list { expr :: rest }
 
 param_list:
 | (* empty *) { [] }

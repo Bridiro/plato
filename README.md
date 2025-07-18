@@ -5,7 +5,7 @@
 ## Goals
 
 - Strong static typing
-- Compiled directly to machine code (no C backend)
+- Compiled directly to LLVM (no C backend)
 - Simple and readable syntax
 - Fast compilation and execution
 - Designed to grow gradually in complexity

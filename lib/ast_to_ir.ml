@@ -119,7 +119,26 @@ let rec infer_type_from_expression ctx = function
     IntType 32 (* Would need function signature lookup *)
   | Ast.Range (_, _, _) ->
     ArrayType (IntType 32, 2) (* Range creates array of 2 integers [start, end] *)
+  | Ast.StructExpr (path, _, _) ->
+    let struct_name = String.concat "::" path in
+    StructType (struct_name, [])  (* Fields will be resolved later *)
   | _ -> IntType 32 (* Default fallback *)
+
+(* Extract struct name from struct type *)
+let extract_struct_name = function
+  | StructType (name, _) -> name
+  | _ -> failwith "Expected struct type"
+
+(* Resolve the type of an expression for method resolution *)
+let resolve_expression_type_for_method ctx = function
+  | Ast.Identifier (name, _) ->
+    (match lookup_symbol ctx name with
+    | Some ty -> ty
+    | None -> failwith ("Undefined variable: " ^ name))
+  | Ast.StructExpr (path, _, _) ->
+    let struct_name = String.concat "::" path in
+    StructType (struct_name, [])  (* Fields will be filled later *)
+  | expr -> infer_type_from_expression ctx expr
 
 (* Block management *)
 let add_block ctx block =
@@ -185,7 +204,10 @@ let rec expression_to_ir_value ctx = function
       (* Method call: convert p.test() to Point::test(&p) *)
       let struct_expr_ir = expression_to_ir_value ctx struct_expr in
       let struct_addr = UnaryOp (IRef, struct_expr_ir) in
-      let method_full_name = "Point::" ^ method_name in  (* TODO: get actual struct type *)
+      (* Resolve the actual struct type *)
+      let struct_type = resolve_expression_type_for_method ctx struct_expr in
+      let struct_name = extract_struct_name struct_type in
+      let method_full_name = struct_name ^ "::" ^ method_name in
       let args_ir = List.map (expression_to_ir_value ctx) args in
       Call (method_full_name, struct_addr :: args_ir)
     | _ -> failwith "Complex function expressions not yet supported")
@@ -383,7 +405,7 @@ and convert_if_to_blocks ctx cond then_block else_block =
   add_block ctx then_block_ir;
   
   (* Create else block *)
-  let else_block_ir = match else_block with
+  let (else_block_ir, else_has_terminator) = match else_block with
     | Some (else_stmts, else_final) ->
       push_scope ctx;
       let else_instructions = List.concat_map (convert_statement_to_blocks ctx) else_stmts in
@@ -401,22 +423,29 @@ and convert_if_to_blocks ctx cond then_block else_block =
         | _ -> false
       ) (else_instructions @ else_final_instructions) in
       
-      if else_has_terminator then
+      let block = if else_has_terminator then
         { label = else_label; instructions = else_instructions @ else_final_instructions }
       else
         create_block_with_terminator else_label 
           (else_instructions @ else_final_instructions) (Jump merge_label)
+      in
+      (block, else_has_terminator)
     | None ->
-      create_block_with_terminator else_label [] (Jump merge_label)
+      let block = create_block_with_terminator else_label [] (Jump merge_label) in
+      (block, false)
   in
   add_block ctx else_block_ir;
   
-  (* Create merge block *)
-  let merge_block = match ctx.continuation_label with
-    | Some cont_label -> create_block_with_terminator merge_label [] (Jump cont_label)
-    | None -> create_empty_block merge_label
-  in
-  add_block ctx merge_block;
+  (* Only create merge block if at least one branch needs it *)
+  let merge_needed = not then_has_terminator || not else_has_terminator in
+  
+  if merge_needed then (
+    let merge_block = match ctx.continuation_label with
+      | Some cont_label -> create_block_with_terminator merge_label [] (Jump cont_label)
+      | None -> create_empty_block merge_label
+    in
+    add_block ctx merge_block
+  );
   
   (* Return the branch instruction for the current block *)
   [Branch (cond_ir, then_label, else_label)]
