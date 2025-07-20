@@ -36,6 +36,17 @@ let with_position startpos _endpos x =
 
 (* Precedence and associativity *)
 %right ASSIGN
+%left OR
+%left AND
+%left BIT_OR
+%left BIT_XOR
+%left BIT_AND
+%left EQ NE
+%left LT GT LE GE
+%left DOTDOT
+%left SHL SHR
+%left PLUS MINUS
+%left STAR SLASH PERCENT
 %right NOT
 %left DOT
 %left LBRACKET
@@ -302,13 +313,33 @@ simple_expression:
 | path = multi_part_path { PathExpr (path, make_position $startpos) }
 | LPAREN e = expression RPAREN { e }
 | block = block { Block (block, make_position $startpos) }
-| LBRACKET exprs = separated_list(COMMA, expression) RBRACKET
+
+(* Multi-part paths (at least one ::) *)
+multi_part_path:
+| id1 = IDENTIFIER DOUBLE_COLON id2 = IDENTIFIER { [id1; id2] }
+| path = multi_part_path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
+
+expression:
+| e = simple_expression { e }
+| e1 = expression op = binary_op e2 = expression { BinaryOp (e1, op, e2, make_position $startpos(op)) }
+| op = unary_op e = expression %prec NOT { UnaryOp (op, e, make_position $startpos) }
+| e = expression AS ty = eiron_type { Cast (e, ty, make_position $startpos) }
+| e1 = expression LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
+| e = expression DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
+| e = expression ARROW field = IDENTIFIER { PointerAccess (e, field, make_position $startpos) }
+| func = expression LPAREN args = expression_list RPAREN
+  { FunctionCall (func, args, make_position $startpos) }
+| LBRACKET exprs = expression_list RBRACKET
   { ArrayExpr (exprs, make_position $startpos) }
 | path = path LBRACE fields = struct_field_list RBRACE
   { StructExpr (path, fields, make_position $startpos) }
-| IF cond = condition_expr then_block = block else_part = else_part?
-  { If (cond, then_block, else_part, make_position $startpos) }
-| MATCH expr = condition_expr LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
+| IF cond = condition_expr then_block = block ELSE else_block = block
+  { If (cond, then_block, Some else_block, make_position $startpos) }
+| IF cond = condition_expr then_block = block ELSE IF else_cond = condition_expr else_then_block = block ELSE else_else_block = block
+  { If (cond, then_block, Some ({ statements = []; expr = Some (If (else_cond, else_then_block, Some else_else_block, make_position $startpos)) }), make_position $startpos) }
+| IF cond = condition_expr then_block = block
+  { If (cond, then_block, None, make_position $startpos) }
+| MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
   { Match (expr, arms, make_position $startpos) }
 | LOOP body = block { Loop (body, make_position $startpos) }
 | WHILE cond = condition_expr body = block { While (cond, body, make_position $startpos) }
@@ -317,59 +348,7 @@ simple_expression:
 | RETURN expr = expression? { Return (expr, make_position $startpos) }
 | BREAK expr = expression? { Break (expr, make_position $startpos) }
 | CONTINUE { Continue (make_position $startpos) }
-| e1 = condition_expr DOTDOT e2 = condition_expr { Range (e1, e2, make_position $startpos) }
-
-(* Multi-part paths (at least one ::) *)
-multi_part_path:
-| id1 = IDENTIFIER DOUBLE_COLON id2 = IDENTIFIER { [id1; id2] }
-| path = multi_part_path DOUBLE_COLON id = IDENTIFIER { path @ [id] }
-
-expression:
-| e = or_expr { e }
-
-or_expr:
-| e = and_expr { e }
-| e1 = or_expr OR e2 = and_expr { BinaryOp (e1, Or, e2, make_position $startpos($2)) }
-
-and_expr:
-| e = equality_expr { e }
-| e1 = and_expr AND e2 = equality_expr { BinaryOp (e1, And, e2, make_position $startpos($2)) }
-
-equality_expr:
-| e = relational_expr { e }
-| e1 = equality_expr EQ e2 = relational_expr { BinaryOp (e1, Eq, e2, make_position $startpos($2)) }
-| e1 = equality_expr NE e2 = relational_expr { BinaryOp (e1, Ne, e2, make_position $startpos($2)) }
-
-relational_expr:
-| e = additive_expr { e }
-| e1 = relational_expr LT e2 = additive_expr { BinaryOp (e1, Lt, e2, make_position $startpos($2)) }
-| e1 = relational_expr GT e2 = additive_expr { BinaryOp (e1, Gt, e2, make_position $startpos($2)) }
-| e1 = relational_expr LE e2 = additive_expr { BinaryOp (e1, Le, e2, make_position $startpos($2)) }
-| e1 = relational_expr GE e2 = additive_expr { BinaryOp (e1, Ge, e2, make_position $startpos($2)) }
-
-additive_expr:
-| e = multiplicative_expr { e }
-| e1 = additive_expr PLUS e2 = multiplicative_expr { BinaryOp (e1, Add, e2, make_position $startpos($2)) }
-| e1 = additive_expr MINUS e2 = multiplicative_expr { BinaryOp (e1, Sub, e2, make_position $startpos($2)) }
-
-multiplicative_expr:
-| e = unary_expr { e }
-| e1 = multiplicative_expr STAR e2 = unary_expr { BinaryOp (e1, Mul, e2, make_position $startpos($2)) }
-| e1 = multiplicative_expr SLASH e2 = unary_expr { BinaryOp (e1, Div, e2, make_position $startpos($2)) }
-| e1 = multiplicative_expr PERCENT e2 = unary_expr { BinaryOp (e1, Mod, e2, make_position $startpos($2)) }
-
-unary_expr:
-| e = postfix_expr { e }
-| op = unary_op e = unary_expr { UnaryOp (op, e, make_position $startpos) }
-
-postfix_expr:
-| e = simple_expression { e }
-| e = postfix_expr AS ty = eiron_type { Cast (e, ty, make_position $startpos) }
-| e1 = postfix_expr LBRACKET e2 = expression RBRACKET { Index (e1, e2, make_position $startpos) }
-| e = postfix_expr DOT field = IDENTIFIER { FieldAccess (e, field, make_position $startpos) }
-| e = postfix_expr ARROW field = IDENTIFIER { PointerAccess (e, field, make_position $startpos) }
-| func = postfix_expr LPAREN args = separated_list(COMMA, expression) RPAREN
-  { FunctionCall (func, args, make_position $startpos) }
+| e1 = expression DOTDOT e2 = expression { Range (e1, e2, make_position $startpos) }
 
 (* Literals *)
 literal:
@@ -490,12 +469,18 @@ block_inner:
 | stmt = statement { ([stmt], None) }
 | stmt = statement inner = block_inner { let (stmts, expr) = inner in (stmt::stmts, expr) }
 | expr = expression { ([], Some expr) }
+| if_stmt = if_statement inner = block_inner { let (stmts, expr) = inner in (if_stmt::stmts, expr) }
+| if_stmt = if_statement { ([if_stmt], None) }
 | for_stmt = for_statement inner = block_inner { let (stmts, expr) = inner in (for_stmt::stmts, expr) }
 | for_stmt = for_statement { ([for_stmt], None) }
 | while_stmt = while_statement inner = block_inner { let (stmts, expr) = inner in (while_stmt::stmts, expr) }
 | while_stmt = while_statement { ([while_stmt], None) }
 
 (* IF statements without else clause - treated as statements *)
+if_statement:
+| IF cond = condition_expr then_block = block
+  { ExprStmt (If (cond, then_block, None, make_position $startpos)) }
+
 (* FOR statements - treated as statements *)
 for_statement:
 | FOR var = IDENTIFIER IN iter = condition_expr body = block
@@ -540,6 +525,11 @@ struct_field_list:
 | field = struct_field COMMA { [field] }
 | field = struct_field COMMA rest = struct_field_list { field :: rest }
 
+expression_list:
+| (* empty *) { [] }
+| expr = expression { [expr] }
+| expr = expression COMMA { [expr] }
+| expr = expression COMMA rest = expression_list { expr :: rest }
 
 param_list:
 | (* empty *) { [] }
@@ -552,10 +542,5 @@ type_list:
 | ty = eiron_type { [ty] }
 | ty = eiron_type COMMA { [ty] }
 | ty = eiron_type COMMA rest = type_list { ty :: rest }
-
-else_part:
-| ELSE block = block { block }
-| ELSE IF cond = condition_expr then_block = block else_part = else_part?
-  { ([], Some (If (cond, then_block, else_part, make_position $startpos($2)))) }
 
 %%
