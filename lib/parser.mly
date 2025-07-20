@@ -308,7 +308,7 @@ simple_expression:
   { StructExpr (path, fields, make_position $startpos) }
 | IF cond = condition_expr then_block = block else_part = else_part?
   { If (cond, then_block, else_part, make_position $startpos) }
-| MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
+| MATCH expr = condition_expr LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
   { Match (expr, arms, make_position $startpos) }
 | LOOP body = block { Loop (body, make_position $startpos) }
 | WHILE cond = condition_expr body = block { While (cond, body, make_position $startpos) }
