@@ -66,12 +66,16 @@ let rec ir_value_to_llvm_value = function
     in
     op_str ^ " " ^ ir_value_to_llvm_value left ^ ", " ^ ir_value_to_llvm_value right
   | UnaryOp (op, operand) ->
-    (match op with
-    | INot -> "xor i1 " ^ ir_value_to_llvm_value operand ^ ", true"
-    | INeg -> "sub i32 0, " ^ ir_value_to_llvm_value operand
-    | IDeref -> "load ptr, " ^ ir_value_to_llvm_value operand
-    | IRef -> ir_value_to_llvm_value operand  (* Just return the address of the variable *)
-    | ISizeof -> "4")  (* Simplified sizeof *)
+    (match op, operand with
+    | INeg, Constant n -> string_of_int (-n)  (* Constant folding for negation *)
+    | INot, BoolConstant b -> if b then "false" else "true"  (* Constant folding for boolean not *)
+    | _ ->
+      (match op with
+      | INot -> "xor i1 " ^ ir_value_to_llvm_value operand ^ ", true"
+      | INeg -> "sub i32 0, " ^ ir_value_to_llvm_value operand
+      | IDeref -> "load ptr, " ^ ir_value_to_llvm_value operand
+      | IRef -> ir_value_to_llvm_value operand  (* Just return the address of the variable *)
+      | ISizeof -> "4"))  (* Simplified sizeof *)
   | Cast (value, target_type) ->
     let target_llvm = ir_type_to_llvm_type target_type in
     (* Use appropriate cast instruction based on target type *)

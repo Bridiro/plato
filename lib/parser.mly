@@ -336,7 +336,9 @@ expression:
 | IF cond = condition_expr then_block = block ELSE else_block = block
   { If (cond, then_block, Some else_block, make_position $startpos) }
 | IF cond = condition_expr then_block = block ELSE IF else_cond = condition_expr else_then_block = block ELSE else_else_block = block
-  { If (cond, then_block, Some ({ statements = []; expr = Some (If (else_cond, else_then_block, Some else_else_block, make_position $startpos)) }), make_position $startpos) }
+  { If (cond, then_block, Some ([], Some (If (else_cond, else_then_block, Some else_else_block, make_position $startpos))), make_position $startpos) }
+| IF cond = condition_expr then_block = block ELSE IF else_cond = condition_expr else_then_block = block
+  { If (cond, then_block, Some ([], Some (If (else_cond, else_then_block, None, make_position $startpos))), make_position $startpos) }
 | IF cond = condition_expr then_block = block
   { If (cond, then_block, None, make_position $startpos) }
 | MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE

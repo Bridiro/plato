@@ -380,6 +380,95 @@ and convert_expression_statement_to_blocks ctx = function
     let temp_name = generate_temp ctx in
     [Assign (temp_name, ir_value)]
 
+(* Convert if expression to proper basic blocks with direct return (for function final expressions) *)
+and convert_if_expression_with_return ctx cond then_block else_block =
+  let cond_ir = expression_to_ir_value ctx cond in
+  let then_label = generate_label ctx "if_then" in
+  let else_label = generate_label ctx "if_else" in
+  
+  (* Then block: execute then_block and return the result *)
+  let (then_stmts, then_final) = then_block in
+  let then_value = match then_final with
+    | Some expr -> expression_to_ir_value ctx expr
+    | None -> Constant 0
+  in
+  let then_block_ir = {
+    label = then_label;
+    instructions = [Return (Some then_value)]
+  } in
+  add_block ctx then_block_ir;
+  
+  (* Else block: handle both simple else and nested if *)
+  (match else_block with
+    | Some (else_stmts, else_final) ->
+      (match else_final with
+      | Some (Ast.If (nested_cond, nested_then, nested_else, _)) ->
+        (* Nested if - create else block that starts with the nested condition *)
+        let nested_cond_ir = expression_to_ir_value ctx nested_cond in
+        let nested_then_label = generate_label ctx "if_then" in
+        let nested_else_label = generate_label ctx "if_else" in
+        
+        (* Create else block that branches to nested if *)
+        let else_block_ir = {
+          label = else_label;
+          instructions = [Branch (nested_cond_ir, nested_then_label, nested_else_label)]
+        } in
+        add_block ctx else_block_ir;
+        
+        (* Create nested then block *)
+        let (nested_then_stmts, nested_then_final) = nested_then in
+        let nested_then_value = match nested_then_final with
+          | Some expr -> expression_to_ir_value ctx expr
+          | None -> Constant 0
+        in
+        let nested_then_block_ir = {
+          label = nested_then_label;
+          instructions = [Return (Some nested_then_value)]
+        } in
+        add_block ctx nested_then_block_ir;
+        
+        (* Create nested else block *)
+        (match nested_else with
+        | Some nested_else_block ->
+          let (nested_else_stmts, nested_else_final) = nested_else_block in
+          let nested_else_value = match nested_else_final with
+            | Some expr -> expression_to_ir_value ctx expr
+            | None -> Constant 0
+          in
+          let nested_else_block_ir = {
+            label = nested_else_label;
+            instructions = [Return (Some nested_else_value)]
+          } in
+          add_block ctx nested_else_block_ir
+        | None ->
+          let nested_else_block_ir = {
+            label = nested_else_label;
+            instructions = [Return (Some (Constant 0))]
+          } in
+          add_block ctx nested_else_block_ir)
+      | Some expr ->
+        let else_value = expression_to_ir_value ctx expr in
+        let else_block_ir = {
+          label = else_label;
+          instructions = [Return (Some else_value)]
+        } in
+        add_block ctx else_block_ir
+      | None ->
+        let else_block_ir = {
+          label = else_label;
+          instructions = [Return (Some (Constant 0))]
+        } in
+        add_block ctx else_block_ir)
+    | None ->
+      let else_block_ir = {
+        label = else_label;
+        instructions = [Return (Some (Constant 0))]
+      } in
+      add_block ctx else_block_ir);
+  
+  (* Return the branch instruction for the entry block *)
+  [Branch (cond_ir, then_label, else_label)]
+
 (* Convert if expression to proper basic blocks with assignment to a variable *)
 and convert_if_expression_to_assignment ctx result_var cond then_block else_block =
   (* Generate unique temporary variables for each branch *)
@@ -795,8 +884,14 @@ let convert_function ctx func_def =
   let final_instructions = match final_expr with
     | Some expr ->
       (match expr with
-      | For _ | While _ | Loop _ | If _ -> 
-        (* Control flow expressions: process them and don't add return *)
+      | If (cond, then_block, else_block, _) -> 
+        (* If expression as function return - convert to blocks with return *)
+        let if_instructions = convert_if_expression_with_return ctx cond then_block else_block in
+        entry_instructions := !entry_instructions @ if_instructions;
+        has_control_flow := true;
+        []
+      | For _ | While _ | Loop _ -> 
+        (* Other control flow expressions: process them and don't add return *)
         let control_instructions = convert_expression_statement_to_blocks ctx expr in
         entry_instructions := !entry_instructions @ control_instructions;
         has_control_flow := true;
