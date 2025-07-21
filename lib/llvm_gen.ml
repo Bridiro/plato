@@ -30,34 +30,23 @@ let find_field_index struct_name field_name structs =
 
 (* Helper function to determine struct type and field index *)
 let get_struct_field_info field =
-  try
-    (* Look through all structs to find one that has this field *)
-    let rec find_struct_with_field structs =
-      match structs with
-      | [] -> ("Point", if field = "x" then 0 else 1)  (* Fallback *)
-      | (sname, fields) :: rest ->
-        try
-          let idx = find_field_index sname field !current_structs in
-          (sname, idx)
-        with _ -> find_struct_with_field rest
-    in
-    find_struct_with_field !current_structs
-  with _ -> 
-    (* Ultimate fallback *)
-    ("Point", if field = "x" then 0 else if field = "y" then 1 
-              else if field = "top_left" then 0 else if field = "bottom_right" then 1 
-              else 0)
+  (* Look through all structs to find one that has this field *)
+  let rec find_struct_with_field structs =
+    match structs with
+    | [] -> failwith ("Field " ^ field ^ " not found in any struct")
+    | (sname, fields) :: rest ->
+      try
+        let idx = find_field_index sname field !current_structs in
+        (sname, idx)
+      with _ -> find_struct_with_field rest
+  in
+  find_struct_with_field !current_structs
 
 (* Helper function to get field type from struct definition *)
 let get_field_type struct_name field_name =
-  try
-    let fields = List.assoc struct_name !current_structs in
-    let (_, field_type) = List.find (fun (name, _) -> name = field_name) fields in
-    field_type
-  with
-  | Not_found -> 
-    (* Fallback to i32 if struct or field not found *)
-    IntType 32
+  let fields = List.assoc struct_name !current_structs in
+  let (_, field_type) = List.find (fun (name, _) -> name = field_name) fields in
+  field_type
 
 (* Function to infer the type of an IR value *)
 let rec infer_ir_value_type = function
@@ -72,15 +61,13 @@ let rec infer_ir_value_type = function
     | Some ty -> ty
     | None -> 
       (* Check if it's a function parameter *)
-      (try 
-        List.assoc name !current_function_params
-      with Not_found -> IntType 32))  (* Default fallback *)
+      List.assoc name !current_function_params)
   | FieldAccess (struct_val, field) ->
     (* Get the struct type and look up field type *)
     let struct_type = infer_ir_value_type struct_val in
     (match struct_type with
     | StructType (struct_name, _) -> get_field_type struct_name field
-    | _ -> IntType 32)  (* Fallback *)
+    | _ -> failwith ("Field access on non-struct type"))
   | BinaryOp (left, op, _) ->
     let left_type = infer_ir_value_type left in
     (match op with
@@ -91,12 +78,16 @@ let rec infer_ir_value_type = function
     (match op with
     | INot -> BoolType
     | INeg -> operand_type
-    | IDeref -> (match operand_type with PointerType t -> t | _ -> IntType 32)
+    | IDeref -> (match operand_type with PointerType t -> t | _ -> failwith "Dereferencing non-pointer type")
     | IRef -> PointerType operand_type
-    | ISizeof -> IntType 32)
+    | ISizeof -> IntType 64)  (* sizeof typically returns size_t which is usually 64-bit *)
   | Cast (_, target_type) -> target_type
-  | Call _ -> IntType 32  (* Default - this should be improved to look up function signatures *)
-  | _ -> IntType 32  (* Default fallback *)
+  | Call (func_name, _) -> 
+    (* Look up function return type from function signatures registry *)
+    (match Hashtbl.find_opt function_signatures func_name with
+    | Some t -> t
+    | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry"))
+  | _ -> failwith ("Cannot infer type for this IR value")
 
 (* LLVM type mappings *)
 let rec ir_type_to_llvm_type = function
@@ -146,7 +137,9 @@ let rec ir_value_to_llvm_value = function
     let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
     let args_str = String.concat ", " (List.map ir_value_to_llvm_value args) in
     "call @" ^ mangled_name ^ "(" ^ args_str ^ ")"
-  | Load value -> "load i32, ptr " ^ ir_value_to_llvm_value value
+  | Load value -> 
+    let val_type = infer_ir_value_type value in
+    "load " ^ ir_type_to_llvm_type val_type ^ ", ptr " ^ ir_value_to_llvm_value value
   | BinaryOp (left, op, right) ->
     let op_str = match op with
       | IAdd -> "add"
@@ -196,11 +189,13 @@ let rec ir_value_to_llvm_value = function
   | ArrayAccess (array, index) ->
     "getelementptr inbounds " ^ ir_value_to_llvm_value array ^ ", " ^ ir_value_to_llvm_value index
   | StructInit (struct_name, fields) ->
-    let field_values = List.map (fun (_, value) -> 
+    let field_values = List.map (fun (field_name, value) -> 
       match value with
       | StructInit (inner_struct_name, _) -> 
         "%struct." ^ inner_struct_name ^ " " ^ ir_value_to_llvm_value value
-      | _ -> "i32 " ^ ir_value_to_llvm_value value
+      | _ -> 
+        let field_type = get_field_type struct_name field_name in
+        ir_type_to_llvm_type field_type ^ " " ^ ir_value_to_llvm_value value
     ) fields in
     "{ " ^ String.concat ", " field_values ^ " }"
   | ArrayInit values ->
@@ -618,7 +613,8 @@ let ir_instruction_to_llvm temp_counter = function
       in
       final_instr ^ temp_name ^ " = " ^ final_op_str ^ " " ^ type_str ^ " " ^ left_val ^ ", " ^ right_val ^ "\n  ret " ^ return_type_str ^ " " ^ temp_name
     | _ ->
-      "ret i32 " ^ ir_value_to_llvm_value value)
+      let val_type = infer_ir_value_type value in
+      "ret " ^ ir_type_to_llvm_type val_type ^ " " ^ ir_value_to_llvm_value value)
   
   | Return None ->
     "ret void"
@@ -637,7 +633,8 @@ let ir_instruction_to_llvm temp_counter = function
     "call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
   
   | Store (addr, value) ->
-    "store i32 " ^ ir_value_to_llvm_value value ^ ", ptr " ^ ir_value_to_llvm_value addr
+    let val_type = infer_ir_value_type value in
+    "store " ^ ir_type_to_llvm_type val_type ^ " " ^ ir_value_to_llvm_value value ^ ", ptr " ^ ir_value_to_llvm_value addr
 
 (* Generate LLVM function from IR function *)
 let ir_function_to_llvm ir_func =
