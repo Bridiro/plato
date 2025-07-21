@@ -431,15 +431,30 @@ and convert_if_expression_with_return ctx cond then_block else_block =
         (match nested_else with
         | Some nested_else_block ->
           let (nested_else_stmts, nested_else_final) = nested_else_block in
-          let nested_else_value = match nested_else_final with
-            | Some expr -> expression_to_ir_value ctx expr
-            | None -> Constant 0
-          in
-          let nested_else_block_ir = {
-            label = nested_else_label;
-            instructions = [Return (Some nested_else_value)]
-          } in
-          add_block ctx nested_else_block_ir
+          (match nested_else_final with
+          | Some (Ast.If (deeper_cond, deeper_then, deeper_else, _)) ->
+            (* Another nested if - recursively handle it *)
+            let deeper_instructions = convert_if_expression_with_return ctx deeper_cond deeper_then deeper_else in
+            (* The nested_else_label block should contain the branch instruction from the deeper if *)
+            let deeper_else_block_ir = {
+              label = nested_else_label;
+              instructions = deeper_instructions (* This should be a branch instruction *)
+            } in
+            add_block ctx deeper_else_block_ir
+          | Some expr ->
+            (* Simple expression - create return block *)
+            let nested_else_value = expression_to_ir_value ctx expr in
+            let nested_else_block_ir = {
+              label = nested_else_label;
+              instructions = [Return (Some nested_else_value)]
+            } in
+            add_block ctx nested_else_block_ir
+          | None ->
+            let nested_else_block_ir = {
+              label = nested_else_label;
+              instructions = [Return (Some (Constant 0))]
+            } in
+            add_block ctx nested_else_block_ir)
         | None ->
           let nested_else_block_ir = {
             label = nested_else_label;

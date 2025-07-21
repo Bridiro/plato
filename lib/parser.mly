@@ -333,14 +333,8 @@ expression:
   { ArrayExpr (exprs, make_position $startpos) }
 | path = path LBRACE fields = struct_field_list RBRACE
   { StructExpr (path, fields, make_position $startpos) }
-| IF cond = condition_expr then_block = block ELSE else_block = block
-  { If (cond, then_block, Some else_block, make_position $startpos) }
-| IF cond = condition_expr then_block = block ELSE IF else_cond = condition_expr else_then_block = block ELSE else_else_block = block
-  { If (cond, then_block, Some ([], Some (If (else_cond, else_then_block, Some else_else_block, make_position $startpos))), make_position $startpos) }
-| IF cond = condition_expr then_block = block ELSE IF else_cond = condition_expr else_then_block = block
-  { If (cond, then_block, Some ([], Some (If (else_cond, else_then_block, None, make_position $startpos))), make_position $startpos) }
-| IF cond = condition_expr then_block = block
-  { If (cond, then_block, None, make_position $startpos) }
+| IF cond = condition_expr then_block = block else_clause = else_clause_opt
+  { If (cond, then_block, else_clause, make_position $startpos) }
 | MATCH expr = simple_expression LBRACE arms = separated_nonempty_list(COMMA, match_arm) RBRACE
   { Match (expr, arms, make_position $startpos) }
 | LOOP body = block { Loop (body, make_position $startpos) }
@@ -461,6 +455,13 @@ lvalue:
   { LvalueIndex (lval, expr) }
 | lval = lvalue DOT field = IDENTIFIER { LvalueField (lval, field) }
 | lval = lvalue ARROW field = IDENTIFIER { LvaluePointer (lval, field) }
+
+(* Optional else clause for if expressions *)
+else_clause_opt:
+| (* empty *) { None }
+| ELSE block = block { Some block }
+| ELSE IF cond = condition_expr then_block = block else_clause = else_clause_opt
+  { Some ([], Some (If (cond, then_block, else_clause, make_position $startpos))) }
 
 (* Blocks - restructured to avoid ambiguity *)
 block:
