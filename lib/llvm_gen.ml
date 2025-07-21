@@ -50,7 +50,7 @@ let get_field_type struct_name field_name =
 
 (* Function to infer the type of an IR value *)
 let rec infer_ir_value_type = function
-  | Constant _ -> IntType 32
+  | Constant i -> if i >= -2147483648 && i <= 2147483647 then IntType 32 else IntType 64
   | FloatConstant _ -> FloatType 64
   | BoolConstant _ -> BoolType
   | StringConstant _ -> StringType
@@ -114,7 +114,7 @@ let rec ir_type_to_llvm_type = function
     ir_type_to_llvm_type return_type ^ " (" ^ param_str ^ ")"
   | StructType (name, _) -> "%struct." ^ name
   | EnumType (name, _) -> "i32"  (* Enums as i32 for now *)
-  | _ -> "i32"  (* Default fallback *)
+  | _ -> failwith ("Unsupported IR type conversion to LLVM type")
 
 (* Generate LLVM value from IR value *)
 let rec ir_value_to_llvm_value = function
@@ -169,10 +169,13 @@ let rec ir_value_to_llvm_value = function
     | _ ->
       (match op with
       | INot -> "xor i1 " ^ ir_value_to_llvm_value operand ^ ", true"
-      | INeg -> "sub i32 0, " ^ ir_value_to_llvm_value operand
+      | INeg -> 
+        let operand_type = infer_ir_value_type operand in
+        let type_str = ir_type_to_llvm_type operand_type in
+        "sub " ^ type_str ^ " 0, " ^ ir_value_to_llvm_value operand
       | IDeref -> "load ptr, " ^ ir_value_to_llvm_value operand
       | IRef -> ir_value_to_llvm_value operand  (* Just return the address of the variable *)
-      | ISizeof -> "4"))  (* Simplified sizeof *)
+      | ISizeof -> "8"))  (* sizeof typically returns size_t which is usually 64-bit, so 8 bytes *)
   | Cast (value, target_type) ->
     let target_llvm = ir_type_to_llvm_type target_type in
     (* Use appropriate cast instruction based on target type *)
@@ -227,13 +230,19 @@ let ir_instruction_to_llvm temp_counter = function
       (match value with
       | Call (func_name, args) ->
         let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
+        let call_return_type = match Hashtbl.find_opt function_signatures func_name with
+          | Some t -> t
+          | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
+        in
+        let call_return_type_str = ir_type_to_llvm_type call_return_type in
         let args_str = String.concat ", " (List.mapi (fun i arg -> 
           (* For method calls (containing ::), first argument is a pointer *)
           if String.contains func_name ':' && i = 0 then
             "ptr " ^ ir_value_to_llvm_value arg
           else
-            "i32 " ^ ir_value_to_llvm_value arg) args) in
-        temp_name ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
+            let arg_type = infer_ir_value_type arg in
+            ir_type_to_llvm_type arg_type ^ " " ^ ir_value_to_llvm_value arg) args) in
+        temp_name ^ " = call " ^ call_return_type_str ^ " @" ^ mangled_name ^ "(" ^ args_str ^ ")"
     | BinaryOp (left, op, right) ->
       (* Helper function to load field access values recursively for assignments *)
       let rec get_loaded_value val_expr =
@@ -273,10 +282,25 @@ let ir_instruction_to_llvm temp_counter = function
           let args_instrs = List.map (fun arg -> get_loaded_value arg) args in
           let all_arg_instrs = String.concat "\n  " (List.filter (fun s -> s <> "") (List.map (fun (i, _, _) -> i) args_instrs)) in
           let arg_values = List.map (fun (_, v, _) -> v) args_instrs in
-          let args_str = String.concat ", " (List.map (fun v -> "i32 " ^ v) arg_values) in
-          let call_instr = call_temp ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")" in
+          let call_return_type = match Hashtbl.find_opt function_signatures func_name with
+            | Some t -> t
+            | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
+          in
+          let call_return_type_str = ir_type_to_llvm_type call_return_type in
+          let args_str = String.concat ", " (List.map (fun v -> 
+            (* Get type from temporary types registry or fail if unknown *)
+            let val_type = try
+              Hashtbl.find temp_types (String.sub v 1 (String.length v - 1))
+            with Not_found -> failwith ("Unknown temporary variable type: " ^ v)
+            in
+            ir_type_to_llvm_type val_type ^ " " ^ v
+          ) arg_values) in
+          let call_instr = call_temp ^ " = call " ^ call_return_type_str ^ " @" ^ mangled_name ^ "(" ^ args_str ^ ")" in
           let final_instr = if all_arg_instrs = "" then call_instr else all_arg_instrs ^ "\n  " ^ call_instr in
-          let call_type = IntType 32 in  (* Default - should be improved *)
+          let call_type = match Hashtbl.find_opt function_signatures func_name with
+            | Some t -> t
+            | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
+          in
           Hashtbl.replace temp_types (String.sub call_temp 1 (String.length call_temp - 1)) call_type;
           (final_instr, call_temp, call_type)
         | BinaryOp (left, nested_op, right) ->
@@ -297,10 +321,12 @@ let ir_instruction_to_llvm temp_counter = function
               | _ -> "fadd"
               in (op_str, "double")
             | _ -> 
-              let op_str = match nested_op with
+              let int_op = match nested_op with
               | IAdd -> "add" | ISub -> "sub" | IMul -> "mul" | IDiv -> "sdiv" | IMod -> "srem"
               | _ -> "add"
-              in (op_str, "i32")
+              in 
+              let type_str = ir_type_to_llvm_type result_type in
+              (int_op, type_str)
           in
           let all_nested_instr = String.concat "\n  " (List.filter (fun s -> s <> "") [left_instr; right_instr]) in
           let nested_binary_instr = nested_temp ^ " = " ^ nested_op_str ^ " " ^ type_str ^ " " ^ left_val ^ ", " ^ right_val in
@@ -344,7 +370,9 @@ let ir_instruction_to_llvm temp_counter = function
           | IBitXor -> "xor"
           | IShl -> "shl"
           | IShr -> "ashr"
-          in (int_op, "i32")
+          in 
+          let type_str = ir_type_to_llvm_type result_type in
+          (int_op, type_str)
       in
       let all_instr = String.concat "\n  " (List.filter (fun s -> s <> "") [left_instr; right_instr]) in
       let final_instr = if all_instr = "" then "" else all_instr ^ "\n  " in
@@ -354,10 +382,24 @@ let ir_instruction_to_llvm temp_counter = function
     | UnaryOp (op, operand) ->
       (match op with
       | INot -> temp_name ^ " = xor i1 " ^ ir_value_to_llvm_value operand ^ ", true"
-      | INeg -> temp_name ^ " = sub i32 0, " ^ ir_value_to_llvm_value operand
-      | IDeref -> temp_name ^ " = load i32, ptr " ^ ir_value_to_llvm_value operand
-      | IRef -> temp_name ^ " = alloca i32"
-      | ISizeof -> temp_name ^ " = add i32 0, 4")
+      | INeg -> 
+        let operand_type = infer_ir_value_type operand in
+        let type_str = ir_type_to_llvm_type operand_type in
+        temp_name ^ " = sub " ^ type_str ^ " 0, " ^ ir_value_to_llvm_value operand
+      | IDeref -> 
+        let operand_type = infer_ir_value_type operand in
+        let deref_type = match operand_type with
+          | PointerType t -> t
+          | _ -> failwith "Dereferencing non-pointer type"
+        in
+        let type_str = ir_type_to_llvm_type deref_type in
+        temp_name ^ " = load " ^ type_str ^ ", ptr " ^ ir_value_to_llvm_value operand
+      | IRef -> 
+        let operand_type = infer_ir_value_type operand in
+        let type_str = ir_type_to_llvm_type operand_type in
+        temp_name ^ " = alloca " ^ type_str
+      | ISizeof -> 
+        temp_name ^ " = add i64 0, 8")  (* sizeof returns size_t which is typically 64-bit *)
     | FieldAccess (struct_val, field) ->
       let (struct_name, field_index) = get_struct_field_info field in
       temp_name ^ " = getelementptr inbounds %struct." ^ struct_name ^ ", ptr " ^ ir_value_to_llvm_value struct_val ^ ", i32 0, i32 " ^ string_of_int field_index
@@ -438,13 +480,19 @@ let ir_instruction_to_llvm temp_counter = function
         let (left_instr, left_val) = get_loaded_value left in
         let (right_instr, right_val) = get_loaded_value right in
         let all_instr = String.concat "\n  " (List.filter (fun s -> s <> "") [left_instr; right_instr]) in
-        let binary_instr = binary_temp ^ " = " ^ op_str ^ " i32 " ^ left_val ^ ", " ^ right_val in
-        let cast_instr_final = temp_name ^ " = " ^ cast_instr ^ " i32 " ^ binary_temp ^ " to " ^ target_llvm in
+        (* Use proper type inference for binary operations in casts *)
+        let left_type = infer_ir_value_type left in
+        let type_str = ir_type_to_llvm_type left_type in
+        let binary_instr = binary_temp ^ " = " ^ op_str ^ " " ^ type_str ^ " " ^ left_val ^ ", " ^ right_val in
+        let cast_instr_final = temp_name ^ " = " ^ cast_instr ^ " " ^ type_str ^ " " ^ binary_temp ^ " to " ^ target_llvm in
         (if all_instr = "" then "" else all_instr ^ "\n  ") ^ binary_instr ^ "\n  " ^ cast_instr_final
       | _ ->
         temp_name ^ " = " ^ cast_instr ^ " " ^ ir_value_to_llvm_value value ^ " to " ^ target_llvm)
     | _ ->
-      temp_name ^ " = add i32 0, " ^ ir_value_to_llvm_value value)
+      (* Use proper type inference instead of hardcoded i32 *)
+      let val_type = infer_ir_value_type value in
+      let type_str = ir_type_to_llvm_type val_type in
+      temp_name ^ " = add " ^ type_str ^ " 0, " ^ ir_value_to_llvm_value value)
   
   | Branch (cond, then_label, else_label) ->
     (* Handle comparison conditions properly *)
@@ -481,7 +529,7 @@ let ir_instruction_to_llvm temp_counter = function
       (* Look up function return type from function signatures registry *)
       let return_type = match Hashtbl.find_opt function_signatures func_name with
         | Some t -> t
-        | None -> IntType 32  (* Default fallback *)
+        | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
       in
       let return_type_str = ir_type_to_llvm_type return_type in
       temp_name ^ " = call " ^ return_type_str ^ " @" ^ mangled_name ^ "(" ^ args_str ^ ")\n  ret " ^ return_type_str ^ " " ^ temp_name
@@ -566,8 +614,20 @@ let ir_instruction_to_llvm temp_counter = function
           let args_instrs = List.map (fun arg -> get_loaded_value arg) args in
           let all_arg_instrs = String.concat "\n  " (List.filter (fun s -> s <> "") (List.map fst args_instrs)) in
           let arg_values = List.map snd args_instrs in
-          let args_str = String.concat ", " (List.map (fun v -> "i32 " ^ v) arg_values) in
-          let call_instr = call_temp ^ " = call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")" in
+          let call_return_type = match Hashtbl.find_opt function_signatures func_name with
+            | Some t -> t
+            | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
+          in
+          let call_return_type_str = ir_type_to_llvm_type call_return_type in
+          let args_str = String.concat ", " (List.map (fun v -> 
+            (* Get type from temporary types registry or fail if unknown *)
+            let val_type = try
+              Hashtbl.find temp_types (String.sub v 1 (String.length v - 1))
+            with Not_found -> failwith ("Unknown temporary variable type: " ^ v)
+            in
+            ir_type_to_llvm_type val_type ^ " " ^ v
+          ) arg_values) in
+          let call_instr = call_temp ^ " = call " ^ call_return_type_str ^ " @" ^ mangled_name ^ "(" ^ args_str ^ ")" in
           let final_instr = if all_arg_instrs = "" then call_instr else all_arg_instrs ^ "\n  " ^ call_instr in
           (final_instr, call_temp)
         | BinaryOp (left, nested_op, right) ->
@@ -581,7 +641,10 @@ let ir_instruction_to_llvm temp_counter = function
           let nested_temp = "%nested_tmp" ^ string_of_int (!temp_counter) in
           incr temp_counter;
           let all_nested_instr = String.concat "\n  " (List.filter (fun s -> s <> "") [left_instr; right_instr]) in
-          let nested_binary_instr = nested_temp ^ " = " ^ nested_op_str ^ " i32 " ^ left_val ^ ", " ^ right_val in
+          (* Use proper type inference for nested binary operations *)
+          let left_type = infer_ir_value_type left in
+          let type_str = ir_type_to_llvm_type left_type in
+          let nested_binary_instr = nested_temp ^ " = " ^ nested_op_str ^ " " ^ type_str ^ " " ^ left_val ^ ", " ^ right_val in
           let final_nested_instr = if all_nested_instr = "" then nested_binary_instr else all_nested_instr ^ "\n  " ^ nested_binary_instr in
           (final_nested_instr, nested_temp)
         | _ -> ("", ir_value_to_llvm_value val_expr)
@@ -601,16 +664,15 @@ let ir_instruction_to_llvm temp_counter = function
           | IDiv -> "fdiv"
           | _ -> "fadd"
           in (float_op, "double")
-        | _ -> (op_str, "i32")
+        | _ -> 
+          let type_str = ir_type_to_llvm_type result_type in
+          (op_str, type_str)
       in
       let temp_name = "%ret_tmp" ^ string_of_int (!temp_counter) in
       incr temp_counter;
       let all_instr = String.concat "\n  " (List.filter (fun s -> s <> "") [left_instr; right_instr]) in
       let final_instr = if all_instr = "" then "" else all_instr ^ "\n  " in
-      let return_type_str = match result_type with
-        | FloatType _ -> "double"
-        | _ -> "i32"
-      in
+      let return_type_str = ir_type_to_llvm_type result_type in
       final_instr ^ temp_name ^ " = " ^ final_op_str ^ " " ^ type_str ^ " " ^ left_val ^ ", " ^ right_val ^ "\n  ret " ^ return_type_str ^ " " ^ temp_name
     | _ ->
       let val_type = infer_ir_value_type value in
@@ -624,13 +686,19 @@ let ir_instruction_to_llvm temp_counter = function
   
   | Call (func_name, args) ->
     let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
+    let call_return_type = match Hashtbl.find_opt function_signatures func_name with
+      | Some t -> t
+      | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
+    in
+    let call_return_type_str = ir_type_to_llvm_type call_return_type in
     let args_str = String.concat ", " (List.mapi (fun i arg -> 
       (* For method calls (containing ::), first argument is a pointer *)
       if String.contains func_name ':' && i = 0 then
         "ptr " ^ ir_value_to_llvm_value arg
       else
-        "i32 " ^ ir_value_to_llvm_value arg) args) in
-    "call i32 @" ^ mangled_name ^ "(" ^ args_str ^ ")"
+        let arg_type = infer_ir_value_type arg in
+        ir_type_to_llvm_type arg_type ^ " " ^ ir_value_to_llvm_value arg) args) in
+    "call " ^ call_return_type_str ^ " @" ^ mangled_name ^ "(" ^ args_str ^ ")"
   
   | Store (addr, value) ->
     let val_type = infer_ir_value_type value in
