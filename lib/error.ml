@@ -17,6 +17,8 @@ type error_kind =
   | ParseError of string
   | SemanticError of string
   | TypeError of string
+  | IrGenError of string
+  | LlvmGenError of string
   | UnknownError of string
 
 type error = {
@@ -40,6 +42,8 @@ let string_of_error_kind = function
   | ParseError _ -> "Parser Error"
   | SemanticError _ -> "Semantic Error"
   | TypeError _ -> "Type Error"
+  | IrGenError _ -> "IR Generation Error"
+  | LlvmGenError _ -> "LLVM Generation Error"
   | UnknownError _ -> "Unknown Error"
 
 let format_position pos =
@@ -178,3 +182,15 @@ let type_error_span
   in
   let span = make_span start_pos end_pos filename in
   CompilerError (make_error (TypeError message) span message)
+
+(* IR Generation error functions *)
+let ir_gen_error ~filename ~line ~column ~offset message =
+  let pos = make_position line column offset in
+  let span = make_span pos pos filename in
+  CompilerError (make_error (IrGenError message) span message)
+
+(* LLVM Generation error functions *)
+let llvm_gen_error ~filename ~line ~column ~offset message =
+  let pos = make_position line column offset in
+  let span = make_span pos pos filename in
+  CompilerError (make_error (LlvmGenError message) span message)

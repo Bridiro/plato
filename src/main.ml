@@ -65,6 +65,9 @@ let () =
     (* Convert AST to IR *)
     let ir_module = Eiron.Ast_to_ir.convert_ast_to_ir ast in
 
+    (* Set filename context for LLVM generation error reporting *)
+    Eiron.Llvm_gen.set_llvm_context_filename !input_file ;
+
     (* Generate LLVM IR *)
     let llvm_ir = Eiron.Llvm_gen.generate_llvm ir_module in
 

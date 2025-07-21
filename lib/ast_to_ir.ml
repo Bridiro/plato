@@ -16,6 +16,9 @@ type conversion_context = {
   mutable continue_label: string option;
   (* Continuation context - where control should flow after current construct *)
   mutable continuation_label: string option;
+  (* Position tracking for error reporting *)
+  mutable current_filename: string option;
+  mutable current_position: Ast.position option;
 }
 
 let create_conversion_context () = {
@@ -28,6 +31,8 @@ let create_conversion_context () = {
   break_label = None;
   continue_label = None;
   continuation_label = None;
+  current_filename = None;
+  current_position = None;
 }
 
 (* Generate unique labels and temps *)
@@ -69,6 +74,19 @@ let declare_symbol ctx name ir_type =
     (* Add to locals if we're in a function and not in global scope *)
     if ctx.current_function <> None && List.length ctx.scopes > 1 then
       ctx.locals <- (name, ir_type) :: ctx.locals
+
+(* Error handling with position information *)
+let ir_gen_error ctx message =
+  let line = match ctx.current_position with Some pos -> pos.line | None -> 1 in
+  let column = match ctx.current_position with Some pos -> pos.column | None -> 1 in
+  let filename = ctx.current_filename in
+  raise (Error.ir_gen_error ~filename ~line ~column ~offset:0 message)
+
+let set_position ctx pos =
+  ctx.current_position <- Some pos
+
+let set_filename ctx filename =
+  ctx.current_filename <- Some filename
 
 (* Type inference helpers *)
 let infer_type_from_literal = function
@@ -188,7 +206,8 @@ let rec expression_to_ir_value ctx = function
     let array_ir = expression_to_ir_value ctx array in
     let index_ir = expression_to_ir_value ctx index in
     ArrayAccess (array_ir, index_ir)
-  | Ast.FieldAccess (expr, field, _) ->
+  | Ast.FieldAccess (expr, field, pos) ->
+    set_position ctx pos;
     let expr_ir = expression_to_ir_value ctx expr in
     FieldAccess (expr_ir, field)
   | Ast.FunctionCall (func_expr, args, _) ->

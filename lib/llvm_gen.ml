@@ -2,6 +2,36 @@ open Ir
 
 (* LLVM IR generation from our internal IR *)
 
+(* Context for position tracking during LLVM generation *)
+type llvm_gen_context = {
+  mutable current_filename: string option;
+  mutable current_position: Error.position option;
+}
+
+let create_llvm_context () = {
+  current_filename = None;
+  current_position = None;
+}
+
+(* Global context for LLVM generation *)
+let global_llvm_context = create_llvm_context ()
+
+(* Error reporting functions using Error module *)
+let llvm_gen_error_with_context message =
+  let pos = match global_llvm_context.current_position with
+    | Some p -> p
+    | None -> Error.make_position 0 0 0  (* Default position if none available *)
+  in
+  let span = Error.make_span pos pos global_llvm_context.current_filename in
+  let error = Error.make_error (Error.LlvmGenError message) span message in
+  raise (Error.CompilerError error)
+
+let set_llvm_context_filename filename =
+  global_llvm_context.current_filename <- Some filename
+
+let set_llvm_context_position pos =
+  global_llvm_context.current_position <- Some (Error.make_position pos.Ast.line pos.Ast.column 0)
+
 (* Global context for struct information - temporary solution *)
 let current_structs = ref []
 
@@ -20,25 +50,34 @@ let find_field_index struct_name field_name structs =
     let (_, fields) = List.find (fun (name, _) -> name = struct_name) structs in
     let rec find_index fields idx =
       match fields with
-      | [] -> failwith ("Field " ^ field_name ^ " not found in struct " ^ struct_name)
+      | [] -> failwith (Printf.sprintf "Field '%s' not found in struct '%s'. Available fields: %s" 
+                               field_name struct_name 
+                               (String.concat ", " (List.map fst fields)))
       | (fname, _) :: rest -> 
         if fname = field_name then idx else find_index rest (idx + 1)
     in
     find_index fields 0
   with Not_found -> 
-    failwith ("Struct " ^ struct_name ^ " not found")
+    let available_structs = List.map fst structs in
+    failwith (Printf.sprintf "Struct '%s' not found. Available structs: %s" 
+                     struct_name (String.concat ", " available_structs))
 
 (* Helper function to determine struct type and field index *)
 let get_struct_field_info field =
   (* Look through all structs to find one that has this field *)
   let rec find_struct_with_field structs =
     match structs with
-    | [] -> failwith ("Field " ^ field ^ " not found in any struct")
+    | [] -> 
+      let all_fields = List.fold_left (fun acc (sname, fields) ->
+        acc @ List.map (fun (fname, _) -> sname ^ "." ^ fname) fields
+      ) [] !current_structs in
+      failwith (Printf.sprintf "Field '%s' not found in any struct. Available fields: %s" 
+                       field (String.concat ", " all_fields))
     | (sname, fields) :: rest ->
       try
         let idx = find_field_index sname field !current_structs in
         (sname, idx)
-      with _ -> find_struct_with_field rest
+      with Failure _ -> find_struct_with_field rest
   in
   find_struct_with_field !current_structs
 
@@ -67,7 +106,15 @@ let rec infer_ir_value_type = function
     let struct_type = infer_ir_value_type struct_val in
     (match struct_type with
     | StructType (struct_name, _) -> get_field_type struct_name field
-    | _ -> failwith ("Field access on non-struct type"))
+    | _ -> 
+      let actual_type = match struct_type with
+        | IntType i -> Printf.sprintf "IntType %d" i
+        | FloatType i -> Printf.sprintf "FloatType %d" i
+        | BoolType -> "BoolType"
+        | StringType -> "StringType"
+        | _ -> "unknown type"
+      in
+      llvm_gen_error_with_context (Printf.sprintf "Field access on non-struct type. Got %s, expected struct type" actual_type))
   | BinaryOp (left, op, _) ->
     let left_type = infer_ir_value_type left in
     (match op with
@@ -78,7 +125,14 @@ let rec infer_ir_value_type = function
     (match op with
     | INot -> BoolType
     | INeg -> operand_type
-    | IDeref -> (match operand_type with PointerType t -> t | _ -> failwith "Dereferencing non-pointer type")
+    | IDeref -> (match operand_type with 
+      | PointerType t -> t 
+      | _ -> llvm_gen_error_with_context (Printf.sprintf "Cannot dereference non-pointer type: %s" 
+               (match operand_type with 
+                | IntType i -> Printf.sprintf "IntType %d" i
+                | FloatType i -> Printf.sprintf "FloatType %d" i 
+                | BoolType -> "BoolType"
+                | _ -> "unknown type")))
     | IRef -> PointerType operand_type
     | ISizeof -> IntType 64)  (* sizeof typically returns size_t which is usually 64-bit *)
   | Cast (_, target_type) -> target_type
@@ -86,8 +140,11 @@ let rec infer_ir_value_type = function
     (* Look up function return type from function signatures registry *)
     (match Hashtbl.find_opt function_signatures func_name with
     | Some t -> t
-    | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry"))
-  | _ -> failwith ("Cannot infer type for this IR value")
+    | None -> 
+      let available_functions = Hashtbl.fold (fun k _ acc -> k :: acc) function_signatures [] in
+      llvm_gen_error_with_context (Printf.sprintf "Function '%s' not found in signatures registry. Available functions: %s" 
+                       func_name (String.concat ", " available_functions)))
+  | _ -> llvm_gen_error_with_context "Cannot infer type for this IR value - unsupported IR construct"
 
 (* LLVM type mappings *)
 let rec ir_type_to_llvm_type = function
@@ -114,7 +171,7 @@ let rec ir_type_to_llvm_type = function
     ir_type_to_llvm_type return_type ^ " (" ^ param_str ^ ")"
   | StructType (name, _) -> "%struct." ^ name
   | EnumType (name, _) -> "i32"  (* Enums as i32 for now *)
-  | _ -> failwith ("Unsupported IR type conversion to LLVM type")
+  | _ -> failwith "LLVM IR Generation Error - Unsupported IR type conversion to LLVM type - this IR type is not yet implemented"
 
 (* Generate LLVM value from IR value *)
 let rec ir_value_to_llvm_value = function
@@ -232,7 +289,10 @@ let ir_instruction_to_llvm temp_counter = function
         let mangled_name = String.map (function ':' -> '_' | c -> c) func_name in
         let call_return_type = match Hashtbl.find_opt function_signatures func_name with
           | Some t -> t
-          | None -> failwith ("Function " ^ func_name ^ " not found in signatures registry")
+          | None -> 
+            let available_functions = Hashtbl.fold (fun k _ acc -> k :: acc) function_signatures [] in
+            failwith (Printf.sprintf "LLVM IR Generation Error - Function '%s' not found in signatures registry. Available functions: %s" 
+                             func_name (String.concat ", " available_functions))
         in
         let call_return_type_str = ir_type_to_llvm_type call_return_type in
         let args_str = String.concat ", " (List.mapi (fun i arg -> 
