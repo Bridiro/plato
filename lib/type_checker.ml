@@ -369,6 +369,14 @@ let rec check_expression env = function
             with Not_found ->
               type_error_at pos ("Struct field not found: " ^ field_name))
          | None -> type_error_at pos ("Struct field not found: " ^ field_name)))
+    | TGeneric struct_name ->
+      (* Try to resolve generic type as a struct *)
+      (match lookup_struct env struct_name with
+      | Some fields ->
+        (try List.assoc field_name fields
+         with Not_found ->
+           type_error_at pos ("Struct field not found: " ^ field_name))
+      | None -> type_error_at pos "Field access requires struct type")
     | _ -> type_error_at pos "Field access requires struct type")
   | StructExpr (path, field_exprs, _) ->
     let field_types =
