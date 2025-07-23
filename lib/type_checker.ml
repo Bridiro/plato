@@ -288,7 +288,11 @@ let rec ast_type_to_simple_type = function
     | Void -> TVoid)
   | PathType (path, _) ->
     let type_name = String.concat "::" path in
-    TStruct (type_name, [])  (* Placeholder - will be resolved later *)
+    (match path with
+    | ["int"] -> TI32  (* Default int to i32 *)
+    | ["float"] -> TF64  (* Default float to f64 *)
+    | ["string"] -> TStr
+    | _ -> TStruct (type_name, []))  (* Placeholder - will be resolved later *)
   | PointerType inner_type ->
     TPointer (ast_type_to_simple_type inner_type)
   | ArrayType (element_type, size_expr) ->
@@ -340,6 +344,19 @@ let rec string_of_simple_type = function
   | TGeneric name -> name
   | TNullPtr -> "null"
 
+(* Type checking with enhanced symbol table *)
+let initialize_builtin_functions table =
+  let builtins = [
+    ("print", [TStr], TUnit);
+    ("println", [TStr], TUnit);
+    ("int_to_string", [TI32], TStr);
+    ("string_to_int", [TStr], TI32);
+  ] in
+  List.iter (fun (name, params, ret) ->
+    let pos = { Error.line = 0; column = 0; offset = 0 } in
+    SymbolTable.register_function table name params ret pos
+  ) builtins
+
 (* Enhanced expression type checking with proper scoping *)
 let rec check_expression table = function
   | Literal (lit, pos) -> type_of_literal lit
@@ -361,9 +378,14 @@ let rec check_expression table = function
           (string_of_simple_type left_type) (string_of_simple_type right_type) in
         type_error table error_msg pos
     | Add | Sub | Mul | Div | Mod ->
-      if is_numeric_type left_type && left_type = right_type then left_type
+      if is_numeric_type left_type && is_numeric_type right_type then
+        if left_type = right_type then left_type
+        else
+          let error_msg = Printf.sprintf "Type mismatch in binary operation: cannot apply operator to `%s` and `%s`"
+            (string_of_simple_type left_type) (string_of_simple_type right_type) in
+          type_error table error_msg pos
       else
-        let error_msg = Printf.sprintf "Arithmetic operation requires matching numeric types: expected `%s`, found `%s`"
+        let error_msg = Printf.sprintf "Type mismatch in binary operation: operator requires numeric types, found `%s` and `%s`"
           (string_of_simple_type left_type) (string_of_simple_type right_type) in
         type_error table error_msg pos
     | And | Or ->
@@ -405,13 +427,13 @@ let rec check_expression table = function
           (* Check parameter type compatibility *)
           List.iter2 (fun expected actual ->
             if not (types_compatible expected actual) then
-              let error_msg = Printf.sprintf "Function argument type mismatch in call to `%s`: expected `%s`, found `%s`"
+              let error_msg = Printf.sprintf "Function `%s` expects different argument types: expected `%s`, found `%s`"
                 name (string_of_simple_type expected) (string_of_simple_type actual) in
               type_error table error_msg pos
           ) param_types arg_types;
           return_type
         ) else
-          let error_msg = Printf.sprintf "Function '%s' expects %d arguments, got %d"
+          let error_msg = Printf.sprintf "Function '%s': wrong number of arguments (expected %d, got %d)"
             name (List.length param_types) (List.length arg_types) in
           type_error table error_msg pos
       | None ->
@@ -516,25 +538,58 @@ let rec check_expression table = function
     | None ->
       let error_msg = Printf.sprintf "Unknown struct type '%s'" struct_name in
       type_error table error_msg pos)
+  | Return (expr_opt, pos) ->
+    (match expr_opt with
+    | Some expr -> check_expression table expr
+    | None -> TUnit)
+  | If (cond, then_block, else_block, pos) ->
+    let cond_type = check_expression table cond in
+    if cond_type <> TBool then (
+      let error_msg = "If condition must be boolean" in
+      type_error table error_msg pos
+    );
+    let (then_stmts, then_final) = then_block in
+    let then_type = match then_final with
+      | Some expr -> check_expression table expr
+      | None -> TUnit
+    in
+    let else_type = match else_block with
+      | Some (else_stmts, else_final) ->
+        (match else_final with
+        | Some expr -> check_expression table expr
+        | None -> TUnit)
+      | None -> TUnit
+    in
+    (* Both branches should have compatible types *)
+    if types_compatible then_type else_type then then_type
+    else if types_compatible else_type then_type then else_type
+    else
+      let error_msg = Printf.sprintf "If expression branches have incompatible types: `%s` and `%s`"
+        (string_of_simple_type then_type) (string_of_simple_type else_type) in
+      type_error table error_msg pos
+  | Block (block, pos) ->
+    let (stmts, final_expr) = block in
+    (* Check all statements in the block *)
+    SymbolTable.push_scope table BlockScope;
+    (try
+      List.iter (check_statement table) stmts;
+      (* Return type of final expression *)
+      let result = match final_expr with
+        | Some expr -> check_expression table expr
+        | None -> TUnit
+      in
+      SymbolTable.pop_scope table;
+      result
+    with
+    | exn -> 
+      SymbolTable.pop_scope table;
+      raise exn)
   | _ ->
     (* Handle other expression types *)
     TUnit  (* Placeholder *)
 
-(* Type checking with enhanced symbol table *)
-let initialize_builtin_functions table =
-  let builtins = [
-    ("print", [TStr], TUnit);
-    ("println", [TStr], TUnit);
-    ("int_to_string", [TI32], TStr);
-    ("string_to_int", [TStr], TI32);
-  ] in
-  List.iter (fun (name, params, ret) ->
-    let pos = { Error.line = 0; column = 0; offset = 0 } in
-    SymbolTable.register_function table name params ret pos
-  ) builtins
-
 (* Statement type checking with proper scoping *)
-let rec check_statement table = function
+and check_statement table = function
   | LetStmt (is_mutable, name, type_opt, init_expr_opt) ->
     (* Extract position from initializer expression if available, otherwise use a default *)
     let pos = match init_expr_opt with
@@ -626,6 +681,11 @@ and check_item table = function
     List.iter (check_statement table) statements;
     
     (* Check final expression type matches return type *)
+    let has_return_stmt = List.exists (function
+      | ExprStmt (Return (_, _)) -> true
+      | _ -> false
+    ) statements in
+    
     (match final_expr with
     | Some expr ->
       let actual_return_type = check_expression table expr in
@@ -633,6 +693,9 @@ and check_item table = function
         let error_msg = Printf.sprintf "Function return type mismatch: expected %s, got %s"
           (string_of_simple_type return_type) (string_of_simple_type actual_return_type) in
         type_error table error_msg pos
+    | None when has_return_stmt ->
+      (* Function has return statements, so that's fine *)
+      ()
     | None ->
       if return_type <> TUnit then
         let error_msg = Printf.sprintf "Function should return %s but has no return expression"
@@ -679,6 +742,22 @@ and check_item table = function
         SymbolTable.register_function table method_name param_types return_type (ast_pos_to_error_pos pos)
       | _ -> ()
     ) impl_def.impl_items
+
+  | GlobalVar (_, is_static, is_mutable, name, type_opt, init_expr) ->
+    let pos = get_expression_position init_expr in
+    let inferred_type = check_expression table init_expr in
+    let declared_type = match type_opt with
+      | Some ast_type -> 
+        let declared = ast_type_to_simple_type ast_type in
+        if types_compatible declared inferred_type then declared
+        else
+          let error_msg = Printf.sprintf "Type mismatch in global variable declaration: declared %s but expression has type %s"
+            (string_of_simple_type declared) (string_of_simple_type inferred_type) in
+          type_error table error_msg pos
+      | None -> inferred_type
+    in
+    (* Register the global variable in the global scope *)
+    SymbolTable.declare_symbol table name declared_type is_mutable (ast_pos_to_error_pos pos) false
 
   | _ -> (* Handle other item types *) ()
 
