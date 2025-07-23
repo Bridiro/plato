@@ -179,12 +179,6 @@ let get_blocks_in_order ctx =
   List.rev ctx.current_blocks
 
 (* Convert AST expressions to IR values with proper context *)
-(* Convert statements to instructions, generating proper basic blocks *)
-(* Convert expression statements with proper control flow *)
-(* Convert if statement to proper basic blocks *)
-(* Convert for loop to proper basic blocks *)
-(* Convert while loop to proper basic blocks *)
-(* Convert infinite loop to proper basic blocks *)
 let rec expression_to_ir_value ctx = function
   | Ast.Literal (lit, _) -> literal_to_ir_value lit
   | Ast.Identifier (name, _) -> Variable name
@@ -208,6 +202,8 @@ let rec expression_to_ir_value ctx = function
     ArrayAccess (array_ir, index_ir)
   | Ast.FieldAccess (expr, field, pos) ->
     set_position ctx pos;
+    (* Set position information for LLVM generation *)
+    Llvm_gen.set_llvm_context_position pos;
     let expr_ir = expression_to_ir_value ctx expr in
     FieldAccess (expr_ir, field)
   | Ast.FunctionCall (func_expr, args, _) ->

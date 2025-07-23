@@ -6,21 +6,54 @@ open Ir
 type llvm_gen_context = {
   mutable current_filename: string option;
   mutable current_position: Error.position option;
+  (* Position mapping for IR constructs - maps unique IDs to positions *)
+  mutable ir_positions: (string, Error.position) Hashtbl.t;
 }
 
 let create_llvm_context () = {
   current_filename = None;
   current_position = None;
+  ir_positions = Hashtbl.create 100;
 }
 
 (* Global context for LLVM generation *)
 let global_llvm_context = create_llvm_context ()
+
+(* Global counter for unique IR construct IDs *)
+let ir_id_counter = ref 0
+let generate_ir_id () = 
+  incr ir_id_counter;
+  "ir_" ^ string_of_int !ir_id_counter
+
+(* Position tracking functions *)
+let track_ir_position ir_id pos =
+  Hashtbl.replace global_llvm_context.ir_positions ir_id pos
+
+let get_ir_position ir_id =
+  Hashtbl.find_opt global_llvm_context.ir_positions ir_id
 
 (* Error reporting functions using Error module *)
 let llvm_gen_error_with_context message =
   let pos = match global_llvm_context.current_position with
     | Some p -> p
     | None -> Error.make_position 0 0 0  (* Default position if none available *)
+  in
+  let span = Error.make_span pos pos global_llvm_context.current_filename in
+  let error = Error.make_error (Error.LlvmGenError message) span message in
+  raise (Error.CompilerError error)
+
+(* Enhanced error function that can use tracked positions *)
+let llvm_gen_error_at_ir ir_construct message =
+  let pos = match ir_construct with
+    | Ir.FieldAccess _ -> 
+      (* Try to find position in our tracking system or use current position *)
+      (match global_llvm_context.current_position with
+       | Some p -> p
+       | None -> Error.make_position 0 0 0)
+    | _ -> 
+      (match global_llvm_context.current_position with
+       | Some p -> p
+       | None -> Error.make_position 0 0 0)
   in
   let span = Error.make_span pos pos global_llvm_context.current_filename in
   let error = Error.make_error (Error.LlvmGenError message) span message in
@@ -114,7 +147,7 @@ let rec infer_ir_value_type = function
         | StringType -> "StringType"
         | _ -> "unknown type"
       in
-      llvm_gen_error_with_context (Printf.sprintf "Field access on non-struct type. Got %s, expected struct type" actual_type))
+      llvm_gen_error_at_ir (FieldAccess (struct_val, field)) (Printf.sprintf "Field access on non-struct type. Got %s, expected struct type" actual_type))
   | BinaryOp (left, op, _) ->
     let left_type = infer_ir_value_type left in
     (match op with
