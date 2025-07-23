@@ -802,6 +802,11 @@ let ir_function_to_llvm ir_func =
   (* Set current function parameters for struct pointer lookup *)
   current_function_params := ir_func.params;
   
+  (* Register local variables in temp_types for type lookup *)
+  List.iter (fun (name, ir_type) ->
+    Hashtbl.replace temp_types name ir_type
+  ) ir_func.locals;
+  
   let return_type = ir_type_to_llvm_type ir_func.return_type in
   let params_str = String.concat ", " (List.map (fun (name, ty) ->
     ir_type_to_llvm_type ty ^ " %" ^ name) ir_func.params) in

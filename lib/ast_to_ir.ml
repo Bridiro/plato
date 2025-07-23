@@ -1,12 +1,51 @@
 open Ast
 open Ir
 
+(* Convert type checker's simple_type to IR type *)
+let rec simple_type_to_ir_type = function
+  | Type_checker.TI8 -> IntType 8
+  | Type_checker.TI16 -> IntType 16
+  | Type_checker.TI32 -> IntType 32
+  | Type_checker.TI64 -> IntType 64
+  | Type_checker.TU8 -> UIntType 8
+  | Type_checker.TU16 -> UIntType 16
+  | Type_checker.TU32 -> UIntType 32
+  | Type_checker.TU64 -> UIntType 64
+  | Type_checker.TUsize -> UIntType 64  (* Assume 64-bit architecture *)
+  | Type_checker.TF32 -> FloatType 32
+  | Type_checker.TF64 -> FloatType 64
+  | Type_checker.TBool -> BoolType
+  | Type_checker.TChar -> CharType
+  | Type_checker.TStr -> StringType
+  | Type_checker.TVoid -> VoidType
+  | Type_checker.TUnit -> UnitType
+  | Type_checker.TNullPtr -> PointerType VoidType
+  | Type_checker.TArray (elem_type, Some size) -> ArrayType (simple_type_to_ir_type elem_type, size)
+  | Type_checker.TArray (elem_type, None) -> PointerType (simple_type_to_ir_type elem_type)  (* Dynamic array as pointer *)
+  | Type_checker.TPointer inner_type -> PointerType (simple_type_to_ir_type inner_type)
+  | Type_checker.TFunction (param_types, return_type) ->
+    let ir_param_types = List.map simple_type_to_ir_type param_types in
+    let ir_return_type = simple_type_to_ir_type return_type in
+    FunctionType (ir_param_types, ir_return_type)
+  | Type_checker.TStruct (name, fields) ->
+    let ir_fields = List.map (fun (field_name, field_type) ->
+      (field_name, simple_type_to_ir_type field_type)
+    ) fields in
+    StructType (name, ir_fields)
+  | Type_checker.TEnum (name, variants) ->
+    EnumType (name, variants)
+  | Type_checker.TGeneric name ->
+    (* For now, treat generics as void pointers - proper generic handling would need more context *)
+    PointerType VoidType
+
 (* Enhanced context for proper IR generation with real basic blocks *)
 type conversion_context = {
   mutable label_counter: int;
   mutable temp_counter: int;
   mutable current_blocks: ir_basic_block list;
   mutable current_function: string option;
+  (* Integration with type checker's symbol table *)
+  symbol_table: Type_checker.SymbolTable.t option;
   (* Symbol table for proper scoping *)
   mutable scopes: (string, ir_type) Hashtbl.t list;
   (* Local variables collection for current function *)
@@ -26,6 +65,22 @@ let create_conversion_context () = {
   temp_counter = 0;
   current_blocks = [];
   current_function = None;
+  symbol_table = None;
+  scopes = [Hashtbl.create 32]; (* Start with global scope *)
+  locals = []; (* Start with empty locals *)
+  break_label = None;
+  continue_label = None;
+  continuation_label = None;
+  current_filename = None;
+  current_position = None;
+}
+
+let create_conversion_context_with_symbols symbol_table = {
+  label_counter = 0;
+  temp_counter = 0;
+  current_blocks = [];
+  current_function = None;
+  symbol_table = Some symbol_table;
   scopes = [Hashtbl.create 32]; (* Start with global scope *)
   locals = []; (* Start with empty locals *)
   break_label = None;
@@ -57,14 +112,22 @@ let pop_scope ctx =
   | _ :: rest -> ctx.scopes <- rest
 
 let lookup_symbol ctx name =
-  let rec search = function
-    | [] -> None
-    | scope :: rest ->
-      (match Hashtbl.find_opt scope name with
-      | Some ty -> Some ty
-      | None -> search rest)
-  in
-  search ctx.scopes
+  (* First try the type checker's symbol table *)
+  (match ctx.symbol_table with
+  | Some table ->
+    (match Type_checker.SymbolTable.lookup_symbol table name with
+    | Some symbol_info -> Some (simple_type_to_ir_type symbol_info.symbol_type)
+    | None -> None)
+  | None ->
+    (* Fallback to local scopes for compatibility *)
+    let rec search = function
+      | [] -> None
+      | scope :: rest ->
+        (match Hashtbl.find_opt scope name with
+        | Some ty -> Some ty
+        | None -> search rest)
+    in
+    search ctx.scopes)
 
 let declare_symbol ctx name ir_type =
   match ctx.scopes with
@@ -74,6 +137,31 @@ let declare_symbol ctx name ir_type =
     (* Add to locals if we're in a function and not in global scope *)
     if ctx.current_function <> None && List.length ctx.scopes > 1 then
       ctx.locals <- (name, ir_type) :: ctx.locals
+
+(* Enhanced lookup that also checks function definitions *)
+let lookup_function ctx name =
+  match ctx.symbol_table with
+  | Some table ->
+    (match Type_checker.SymbolTable.lookup_function table name with
+    | Some (param_types, return_type, _) ->
+      let ir_param_types = List.map simple_type_to_ir_type param_types in
+      let ir_return_type = simple_type_to_ir_type return_type in
+      Some (ir_param_types, ir_return_type)
+    | None -> None)
+  | None -> None
+
+(* Enhanced lookup for struct definitions *)
+let lookup_struct ctx name =
+  match ctx.symbol_table with
+  | Some table ->
+    (match Type_checker.SymbolTable.lookup_struct table name with
+    | Some (fields, _) ->
+      let ir_fields = List.map (fun (field_name, field_type) ->
+        (field_name, simple_type_to_ir_type field_type)
+      ) fields in
+      Some ir_fields
+    | None -> None)
+  | None -> None
 
 (* Error handling with position information *)
 let ir_gen_error ctx message =
@@ -1051,3 +1139,85 @@ let ast_program_to_ir_module (program : Ast.program) : ir_module =
 (* Main entry point for AST to IR conversion *)
 let convert_ast_to_ir (program : Ast.program) : ir_module =
   ast_program_to_ir_module program
+
+(* Enhanced conversion with symbol table integration *)
+let convert_ast_to_ir_with_symbols (program : Ast.program) (symbol_table : Type_checker.SymbolTable.t) : ir_module =
+  let ctx = create_conversion_context_with_symbols symbol_table in
+  let globals = ref [] in
+  let functions = ref [] in
+  let structs = ref [] in
+  let enums = ref [] in
+  
+  (* Process each top-level item *)
+  let process_item = function
+    | Function func_def ->
+      let ir_func = convert_function ctx func_def in
+      functions := ir_func :: !functions
+    | Struct struct_def ->
+      let struct_name = struct_def.struct_name in
+      (* Use symbol table information for struct fields *)
+      (match lookup_struct ctx struct_name with
+      | Some fields -> structs := (struct_name, fields) :: !structs
+      | None ->
+        (* Fallback to AST conversion *)
+        let fields = List.map (fun field -> 
+          (field.field_name, ast_type_to_ir_type field.field_type)) struct_def.struct_fields in
+        structs := (struct_name, fields) :: !structs)
+    | Enum enum_def ->
+      let enum_name = enum_def.enum_name in
+      let variants = List.map (fun variant -> variant.variant_name) enum_def.enum_variants in
+      enums := (enum_name, variants) :: !enums
+    | GlobalVar (_, is_static, is_mutable, name, type_opt, init_expr) ->
+      let ir_type = match type_opt with
+        | Some t -> ast_type_to_ir_type t
+        | None -> infer_type_from_expression ctx init_expr (* Proper type inference *)
+      in
+      let initial_value = Some (expression_to_ir_value ctx init_expr) in
+      let global = {
+        name = name;
+        ir_type = ir_type;
+        is_mutable = is_mutable;
+        initial_value = initial_value;
+      } in
+      globals := global :: !globals
+    | Impl impl_def ->
+      List.iter (function
+        | ImplFunction func_def ->
+          (* Create a qualified name for impl functions *)
+          let impl_type_name = match impl_def.impl_type with
+            | PathType (path, _) -> String.concat "::" path
+            | _ -> "Unknown"
+          in
+          
+          (* Resolve SelfType parameters for impl functions *)
+          let resolved_params = List.map (fun param ->
+            let resolved_type = match param.param_type with
+              | SelfType _ -> 
+                (* In impl block, self is a pointer to the impl type *)
+                Ast.PointerType (impl_def.impl_type)
+              | other_type -> other_type
+            in
+            { param with param_type = resolved_type }
+          ) func_def.func_params in
+          
+          let qualified_func_def = {
+            func_def with 
+            func_name = impl_type_name ^ "::" ^ func_def.func_name;
+            func_params = resolved_params;
+          } in
+          let ir_func = convert_function ctx qualified_func_def in
+          functions := ir_func :: !functions
+        | _ -> ()
+      ) impl_def.impl_items
+    | _ -> ()
+  in
+  
+  (* Process all items in the program *)
+  List.iter process_item program;
+  
+  {
+    globals = List.rev !globals;
+    functions = List.rev !functions;
+    structs = List.rev !structs;
+    enums = List.rev !enums;
+  }

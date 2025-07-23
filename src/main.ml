@@ -59,11 +59,11 @@ let () =
     (* Parse the program *)
     let ast = parse_with_error_reporting content !input_file in
 
-    (* Type check the program *)
-    Eiron.Type_checker.type_check_program ast !input_file ;
+    (* Type check the program and get symbol table *)
+    let symbol_table = Eiron.Type_checker.type_check_program_with_symbols ast !input_file in
 
-    (* Convert AST to IR *)
-    let ir_module = Eiron.Ast_to_ir.convert_ast_to_ir ast in
+    (* Convert AST to IR using the symbol table *)
+    let ir_module = Eiron.Ast_to_ir.convert_ast_to_ir_with_symbols ast symbol_table in
 
     (* Set filename context for LLVM generation error reporting *)
     Eiron.Llvm_gen.set_llvm_context_filename !input_file ;
